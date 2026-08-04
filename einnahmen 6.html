@@ -1,0 +1,691 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<title>Einnahmenbuch</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Source+Sans+3:wght@400;500;600;700&display=swap');
+
+:root{
+  --paper: #F2F4F0;
+  --paper-raised: #FFFFFF;
+  --ink: #1F2A24;
+  --ink-soft: #5B675E;
+  --line: #DADFD6;
+  --teal: #2F5D50;
+  --teal-deep: #1D3B32;
+  --ochre: #C1862F;
+  --rose: #B15A5E;
+  --sky: #3E6E8E;
+  --moss: #6B7F3C;
+  --plum: #7A5A82;
+  --clay: #A85B3A;
+  --good-bg: #E7EFE6;
+}
+
+*{box-sizing:border-box;}
+html,body{margin:0;padding:0;}
+body{
+  background:var(--paper);
+  color:var(--ink);
+  font-family:'Source Sans 3', sans-serif;
+  min-height:100vh;
+}
+
+.wrap{
+  max-width:1180px;
+  margin:0 auto;
+  padding:36px 28px 80px;
+}
+
+header.top{
+  display:flex;
+  align-items:baseline;
+  justify-content:space-between;
+  border-bottom:2px solid var(--ink);
+  padding-bottom:18px;
+  margin-bottom:28px;
+  gap:20px;
+  flex-wrap:wrap;
+}
+
+h1{
+  font-family:'Fraunces', serif;
+  font-weight:600;
+  font-size:2.4rem;
+  letter-spacing:-0.01em;
+  margin:0;
+  color:var(--teal-deep);
+}
+h1 .accent{
+  font-style:italic;
+  font-weight:400;
+  color:var(--ochre);
+}
+
+.summary{
+  text-align:right;
+  font-family:'Source Sans 3', sans-serif;
+}
+.summary .label{
+  font-size:0.72rem;
+  text-transform:uppercase;
+  letter-spacing:0.11em;
+  color:var(--ink-soft);
+  display:block;
+  margin-bottom:2px;
+}
+.summary .value{
+  font-family:'Fraunces', serif;
+  font-weight:600;
+  font-size:1.9rem;
+  color:var(--teal-deep);
+}
+
+.layout{
+  display:grid;
+  grid-template-columns:340px 1fr;
+  gap:28px;
+  align-items:start;
+}
+@media (max-width:860px){
+  .layout{grid-template-columns:1fr;}
+}
+
+.card{
+  background:var(--paper-raised);
+  border:1px solid var(--line);
+  border-radius:4px;
+  padding:24px;
+}
+
+.card h2{
+  font-family:'Fraunces', serif;
+  font-size:1.15rem;
+  font-weight:600;
+  margin:0 0 18px;
+  color:var(--teal-deep);
+}
+
+label{
+  display:block;
+  font-size:0.72rem;
+  text-transform:uppercase;
+  letter-spacing:0.09em;
+  color:var(--ink-soft);
+  margin:14px 0 5px;
+}
+label:first-of-type{margin-top:0;}
+
+input[type=text], input[type=date], input[type=number], select, textarea{
+  width:100%;
+  font-family:'Source Sans 3', sans-serif;
+  font-size:0.98rem;
+  padding:9px 10px;
+  border:1px solid var(--line);
+  border-radius:3px;
+  background:#FCFCFA;
+  color:var(--ink);
+}
+input:focus, select:focus, textarea:focus{
+  outline:none;
+  border-color:var(--teal);
+  box-shadow:0 0 0 3px rgba(47,93,80,0.12);
+}
+textarea{resize:vertical; min-height:52px;}
+
+.eur-wrap{position:relative;}
+.eur-wrap span{
+  position:absolute; left:10px; top:50%; transform:translateY(-50%);
+  color:var(--ink-soft); font-size:0.95rem; pointer-events:none;
+}
+.eur-wrap input{padding-left:24px;}
+
+button.primary{
+  margin-top:20px;
+  width:100%;
+  background:var(--teal-deep);
+  color:#fff;
+  border:none;
+  border-radius:3px;
+  padding:12px;
+  font-family:'Source Sans 3', sans-serif;
+  font-weight:600;
+  font-size:0.95rem;
+  letter-spacing:0.02em;
+  cursor:pointer;
+  transition:background 0.15s ease;
+}
+button.primary:hover{background:var(--teal);}
+button.primary:active{transform:translateY(1px);}
+
+.err{
+  color:var(--rose);
+  font-size:0.82rem;
+  margin-top:8px;
+  min-height:1em;
+}
+
+.filter-row{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+  margin-bottom:20px;
+}
+.chip{
+  border:1px solid var(--line);
+  background:var(--paper-raised);
+  color:var(--ink);
+  padding:7px 14px;
+  border-radius:20px;
+  font-size:0.84rem;
+  cursor:pointer;
+  transition:all 0.12s ease;
+  white-space:nowrap;
+}
+.chip:hover{border-color:var(--teal);}
+.chip.active{
+  background:var(--teal-deep);
+  border-color:var(--teal-deep);
+  color:#fff;
+}
+.chip .dot{
+  display:inline-block;
+  width:8px;height:8px;
+  border-radius:50%;
+  margin-right:6px;
+  vertical-align:middle;
+}
+
+.entries{
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+}
+
+.entry{
+  background:var(--paper-raised);
+  border:1px solid var(--line);
+  border-left:5px solid var(--teal);
+  border-radius:4px;
+  padding:14px 16px;
+  display:grid;
+  grid-template-columns:1fr auto auto;
+  gap:6px 20px;
+  align-items:center;
+}
+.entry .main{
+  display:flex;
+  flex-direction:column;
+  gap:2px;
+}
+.entry .name{
+  font-weight:600;
+  font-size:1rem;
+}
+.entry .product{
+  font-size:0.82rem;
+  color:var(--ink-soft);
+}
+.entry .meta{
+  font-size:0.8rem;
+  color:var(--ink-soft);
+  grid-column:1 / -1;
+  display:flex;
+  gap:16px;
+  flex-wrap:wrap;
+  border-top:1px dashed var(--line);
+  padding-top:8px;
+  margin-top:4px;
+}
+.entry .meta .remark{font-style:italic;}
+.entry .amount{
+  font-family:'Fraunces', serif;
+  font-weight:600;
+  font-size:1.25rem;
+  color:var(--teal-deep);
+  text-align:right;
+  white-space:nowrap;
+}
+.entry .pay{
+  font-size:0.76rem;
+  text-transform:uppercase;
+  letter-spacing:0.06em;
+  color:var(--ink-soft);
+  background:var(--good-bg);
+  padding:4px 9px;
+  border-radius:12px;
+  white-space:nowrap;
+}
+.entry .del{
+  grid-row:1;
+  grid-column:3;
+  justify-self:end;
+}
+.del-btn{
+  border:none;
+  background:transparent;
+  color:var(--ink-soft);
+  cursor:pointer;
+  font-size:0.78rem;
+  text-decoration:underline;
+  padding:0;
+}
+.del-btn:hover{color:var(--rose);}
+
+.empty{
+  text-align:center;
+  color:var(--ink-soft);
+  padding:50px 20px;
+  font-family:'Fraunces', serif;
+  font-style:italic;
+  font-size:1.05rem;
+}
+
+.list-head{
+  display:flex;
+  justify-content:space-between;
+  align-items:baseline;
+  margin-bottom:14px;
+}
+.list-head h2{margin:0;}
+.list-count{
+  font-size:0.8rem;
+  color:var(--ink-soft);
+}
+
+.loading{
+  text-align:center;
+  padding:40px;
+  color:var(--ink-soft);
+  font-style:italic;
+}
+
+.dropdown{position:relative;}
+.dd-trigger{
+  width:100%;
+  text-align:left;
+  background:#FCFCFA;
+  border:1px solid var(--line);
+  border-radius:3px;
+  padding:9px 34px 9px 10px;
+  font-family:'Source Sans 3', sans-serif;
+  font-size:0.98rem;
+  color:var(--ink);
+  cursor:pointer;
+  position:relative;
+}
+.dd-trigger::after{
+  content:"";
+  position:absolute;
+  right:13px; top:45%;
+  width:8px; height:8px;
+  border-right:2px solid var(--ink-soft);
+  border-bottom:2px solid var(--ink-soft);
+  transform:translateY(-50%) rotate(45deg);
+}
+.dd-trigger:focus{
+  outline:none;
+  border-color:var(--teal);
+  box-shadow:0 0 0 3px rgba(47,93,80,0.12);
+}
+.dd-menu{
+  display:none;
+  position:absolute;
+  top:calc(100% + 4px);
+  left:0; right:0;
+  background:#fff;
+  border:1px solid var(--line);
+  border-radius:3px;
+  box-shadow:0 8px 20px rgba(0,0,0,0.14);
+  max-height:230px;
+  overflow-y:auto;
+  z-index:30;
+}
+.dd-menu.open{display:block;}
+.dd-option{
+  padding:9px 12px;
+  font-size:0.94rem;
+  cursor:pointer;
+  display:flex;
+  align-items:center;
+  gap:8px;
+}
+.dd-option:hover{background:var(--good-bg);}
+.dd-option.selected{font-weight:600; color:var(--teal-deep);}
+.dd-option .dot{width:8px; height:8px; border-radius:50%; flex:none;}
+
+.backup-row{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  flex-wrap:wrap;
+  margin-bottom:16px;
+}
+.ghost-btn{
+  border:1px solid var(--line);
+  background:var(--paper-raised);
+  color:var(--teal-deep);
+  padding:7px 13px;
+  border-radius:3px;
+  font-size:0.82rem;
+  font-weight:600;
+  cursor:pointer;
+  display:inline-block;
+}
+.ghost-btn:hover{border-color:var(--teal);}
+.backup-note{
+  font-size:0.76rem;
+  color:var(--ink-soft);
+  font-style:italic;
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="top">
+    <h1>Einnahmen<span class="accent">buch</span></h1>
+    <div class="summary">
+      <span class="label" id="sumLabel">Gesamt</span>
+      <span class="value" id="sumValue">0,00 €</span>
+    </div>
+  </header>
+
+  <div class="layout">
+
+    <div class="card">
+      <h2>Neuer Eintrag</h2>
+      <form id="entryForm">
+        <label for="f-name">Name</label>
+        <input type="text" id="f-name" required>
+
+        <label for="f-date">Datum</label>
+        <input type="date" id="f-date" required>
+
+        <label>Produkt</label>
+        <div class="dropdown" id="dd-product">
+          <button type="button" class="dd-trigger" id="dd-product-trigger">Bitte wählen</button>
+          <div class="dd-menu" id="dd-product-menu"></div>
+        </div>
+
+        <label for="f-amount">Einnahme</label>
+        <div class="eur-wrap">
+          <span>€</span>
+          <input type="number" id="f-amount" step="0.01" min="0" required>
+        </div>
+
+        <label>Bezahlung</label>
+        <div class="dropdown" id="dd-pay">
+          <button type="button" class="dd-trigger" id="dd-pay-trigger">Bar</button>
+          <div class="dd-menu" id="dd-pay-menu"></div>
+        </div>
+
+        <label for="f-remark">Bemerkung</label>
+        <textarea id="f-remark" placeholder="optional"></textarea>
+
+        <div class="err" id="formErr"></div>
+        <button type="submit" class="primary">Eintrag speichern</button>
+      </form>
+    </div>
+
+    <div>
+      <div class="filter-row" id="filterRow"></div>
+
+      <div class="list-head">
+        <h2 style="font-family:'Fraunces',serif;font-weight:600;color:var(--teal-deep);">Einträge</h2>
+        <span class="list-count" id="listCount"></span>
+      </div>
+
+      <div class="backup-row">
+        <button type="button" class="ghost-btn" id="exportBtn">Sicherung exportieren</button>
+        <label class="ghost-btn" for="importFile">Sicherung importieren</label>
+        <input type="file" id="importFile" accept="application/json" style="display:none;">
+        <span class="backup-note">Speichere die Sicherungsdatei regelmäßig, damit nichts verloren geht.</span>
+      </div>
+
+      <div id="listArea" class="loading">Lade Einträge…</div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+const PRODUCTS = [
+  "Montagsmahlen",
+  "Pinselplausch",
+  "Fotographieren statt Funktionieren",
+  "Sichtweise",
+  "Kitaworkshops",
+  "Atemlinie statt Kopfchaos",
+  "Gefühlscompass"
+];
+
+const PRODUCT_COLORS = {
+  "Montagsmahlen": "#2F5D50",
+  "Pinselplausch": "#C1862F",
+  "Fotographieren statt Funktionieren": "#3E6E8E",
+  "Sichtweise": "#7A5A82",
+  "Kitaworkshops": "#6B7F3C",
+  "Atemlinie statt Kopfchaos": "#B15A5E",
+  "Gefühlscompass": "#A85B3A"
+};
+
+const STORAGE_KEY = "einnahmen-eintraege";
+let entries = [];
+let activeFilter = "Alle";
+
+const eur = n => n.toLocaleString('de-DE', {minimumFractionDigits:2, maximumFractionDigits:2}) + " €";
+const dateFmt = iso => {
+  const [y,m,d] = iso.split('-');
+  return `${d}.${m}.${y}`;
+};
+
+let selectedProduct = null;
+let selectedPayment = "Bar";
+
+function setupDropdown(prefix, options, withDots, onSelect){
+  const trigger = document.getElementById(prefix + '-trigger');
+  const menu = document.getElementById(prefix + '-menu');
+
+  menu.innerHTML = options.map(o => `
+    <div class="dd-option" data-v="${escapeHtml(o)}">
+      ${withDots ? `<span class="dot" style="background:${PRODUCT_COLORS[o]}"></span>` : ''}
+      ${escapeHtml(o)}
+    </div>
+  `).join('');
+
+  trigger.addEventListener('click', (e) => {
+    e.stopPropagation();
+    document.querySelectorAll('.dd-menu.open').forEach(m => { if(m !== menu) m.classList.remove('open'); });
+    menu.classList.toggle('open');
+  });
+
+  menu.querySelectorAll('.dd-option').forEach(opt => {
+    opt.addEventListener('click', () => {
+      trigger.textContent = opt.dataset.v;
+      menu.querySelectorAll('.dd-option').forEach(o => o.classList.remove('selected'));
+      opt.classList.add('selected');
+      menu.classList.remove('open');
+      onSelect(opt.dataset.v);
+    });
+  });
+}
+
+document.addEventListener('click', () => {
+  document.querySelectorAll('.dd-menu.open').forEach(m => m.classList.remove('open'));
+});
+
+function renderFilters(){
+  const row = document.getElementById('filterRow');
+  const all = ["Alle", ...PRODUCTS];
+  row.innerHTML = all.map(p => {
+    const dot = p === "Alle" ? "" : `<span class="dot" style="background:${PRODUCT_COLORS[p]}"></span>`;
+    return `<button class="chip ${activeFilter===p?'active':''}" data-p="${p}">${dot}${p}</button>`;
+  }).join('');
+  row.querySelectorAll('.chip').forEach(btn => {
+    btn.addEventListener('click', () => {
+      activeFilter = btn.dataset.p;
+      renderFilters();
+      renderList();
+    });
+  });
+}
+
+function renderList(){
+  const area = document.getElementById('listArea');
+  const filtered = entries
+    .filter(e => activeFilter === "Alle" || e.product === activeFilter)
+    .sort((a,b) => b.date.localeCompare(a.date));
+
+  document.getElementById('listCount').textContent =
+    filtered.length === 1 ? "1 Eintrag" : `${filtered.length} Einträge`;
+
+  const total = filtered.reduce((s,e) => s + e.amount, 0);
+  document.getElementById('sumLabel').textContent =
+    activeFilter === "Alle" ? "Gesamt" : "Gesamt · " + activeFilter;
+  document.getElementById('sumValue').textContent = eur(total);
+
+  if(filtered.length === 0){
+    area.innerHTML = `<div class="empty">Noch keine Einträge${activeFilter!=="Alle" ? " für „"+activeFilter+"“" : ""}.</div>`;
+    return;
+  }
+
+  area.innerHTML = `<div class="entries">` + filtered.map(e => `
+    <div class="entry" style="border-left-color:${PRODUCT_COLORS[e.product] || '#2F5D50'}">
+      <div class="main">
+        <span class="name">${escapeHtml(e.name)}</span>
+        <span class="product">${escapeHtml(e.product)}</span>
+      </div>
+      <span class="pay">${escapeHtml(e.payment)}</span>
+      <span class="amount">${eur(e.amount)}</span>
+      <div class="meta">
+        <span>${dateFmt(e.date)}</span>
+        ${e.remark ? `<span class="remark">„${escapeHtml(e.remark)}“</span>` : ""}
+        <span style="margin-left:auto;"><button class="del-btn" data-id="${e.id}">löschen</button></span>
+      </div>
+    </div>
+  `).join('') + `</div>`;
+
+  area.querySelectorAll('.del-btn').forEach(btn => {
+    btn.addEventListener('click', () => deleteEntry(btn.dataset.id));
+  });
+}
+
+function escapeHtml(s){
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+function loadEntries(){
+  try{
+    const raw = localStorage.getItem(STORAGE_KEY);
+    entries = raw ? JSON.parse(raw) : [];
+  }catch(err){
+    entries = [];
+  }
+  renderFilters();
+  renderList();
+}
+
+function saveEntries(){
+  try{
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
+  }catch(err){
+    document.getElementById('formErr').textContent = "Speichern fehlgeschlagen — bitte erneut versuchen.";
+  }
+}
+
+function deleteEntry(id){
+  entries = entries.filter(e => e.id !== id);
+  renderList();
+  saveEntries();
+}
+
+document.getElementById('entryForm').addEventListener('submit', (ev) => {
+  ev.preventDefault();
+  const errEl = document.getElementById('formErr');
+  errEl.textContent = "";
+
+  const name = document.getElementById('f-name').value.trim();
+  const date = document.getElementById('f-date').value;
+  const product = selectedProduct;
+  const amountRaw = document.getElementById('f-amount').value;
+  const payment = selectedPayment;
+  const remark = document.getElementById('f-remark').value.trim();
+
+  const amount = parseFloat(amountRaw);
+  if(!name || !date || !product || isNaN(amount) || amount < 0 || !payment){
+    errEl.textContent = "Bitte alle Pflichtfelder korrekt ausfüllen (Produkt nicht vergessen).";
+    return;
+  }
+
+  entries.push({
+    id: Date.now().toString(36) + Math.random().toString(36).slice(2,7),
+    name, date, product, amount, payment, remark
+  });
+
+  ev.target.reset();
+  document.getElementById('f-date').value = date;
+  selectedProduct = null;
+  document.getElementById('dd-product-trigger').textContent = "Bitte wählen";
+  document.querySelectorAll('#dd-product-menu .dd-option').forEach(o => o.classList.remove('selected'));
+  renderList();
+  saveEntries();
+});
+
+// default date = today
+document.getElementById('f-date').valueAsDate = new Date();
+
+setupDropdown('dd-product', PRODUCTS, true, v => selectedProduct = v);
+setupDropdown('dd-pay', ["Bar", "PayPal", "Überweisung"], false, v => selectedPayment = v);
+document.querySelector('#dd-pay-menu .dd-option[data-v="Bar"]').classList.add('selected');
+
+loadEntries();
+
+document.getElementById('exportBtn').addEventListener('click', () => {
+  const blob = new Blob([JSON.stringify(entries, null, 2)], {type: 'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const today = new Date().toISOString().slice(0,10);
+  a.href = url;
+  a.download = `einnahmen-sicherung-${today}.json`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+});
+
+document.getElementById('importFile').addEventListener('change', (ev) => {
+  const file = ev.target.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try{
+      const imported = JSON.parse(reader.result);
+      if(!Array.isArray(imported)) throw new Error("ungültiges Format");
+      const existingIds = new Set(entries.map(e => e.id));
+      let added = 0;
+      imported.forEach(e => {
+        if(e && e.id && !existingIds.has(e.id)){
+          entries.push(e);
+          existingIds.add(e.id);
+          added++;
+        }
+      });
+      saveEntries();
+      renderList();
+      alert(added > 0
+        ? `${added} Einträge aus der Sicherung übernommen.`
+        : "Keine neuen Einträge gefunden — die Sicherung war bereits vollständig vorhanden.");
+    }catch(err){
+      alert("Diese Datei konnte nicht gelesen werden. Bitte eine gültige Sicherungsdatei wählen.");
+    }
+    ev.target.value = "";
+  };
+  reader.readAsText(file);
+});
+</script>
+</body>
+</html>
