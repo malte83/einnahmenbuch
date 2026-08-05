@@ -1120,6 +1120,11 @@ document.getElementById('cardsArea').addEventListener('click', (ev) => {
     entry.attendance.push(date);
     saveEntries();
     renderCards();
+
+    const remainingAfter = (entry.count || 0) - entry.attendance.length;
+    if(remainingAfter === 1){
+      alert(`${entry.name} hat für „${entry.product}“ nur noch 1 Termin übrig!`);
+    }
   }
   if(ev.target.classList.contains('ptcard-date-del')){
     const id = ev.target.dataset.id;
