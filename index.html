@@ -271,6 +271,7 @@ table.ledger tfoot td.amount{
   white-space:nowrap;
 }
 .del-btn:hover{color:var(--rose);}
+.del-btn.edit-btn:hover{color:var(--teal-deep);}
 
 .empty{
   text-align:center;
@@ -757,7 +758,7 @@ table.ledger tfoot td.amount{
   <div class="layout">
 
     <div class="card">
-      <h2>Neuer Kunde</h2>
+      <h2 id="custFormTitle">Neuer Kunde</h2>
       <form id="customerForm">
         <label for="c-vorname">Vorname</label>
         <input type="text" id="c-vorname" required>
@@ -781,7 +782,8 @@ table.ledger tfoot td.amount{
         <textarea id="c-remark" placeholder="optional"></textarea>
 
         <div class="err" id="custFormErr"></div>
-        <button type="submit" class="primary">Kunde speichern</button>
+        <button type="submit" class="primary" id="custFormSubmitBtn">Kunde speichern</button>
+        <button type="button" class="ghost-btn" id="custFormCancelBtn" style="display:none;margin-top:10px;width:100%;text-align:center;">Bearbeiten abbrechen</button>
       </form>
     </div>
 
@@ -909,6 +911,7 @@ let customers = [];
 let custSearchTerm = "";
 let custSortKey = "nachname";
 let custSortDir = "asc";
+let editingCustomerId = null;
 
 let activeEurFilter = "Alle";
 let periodMode = "total";
@@ -1331,7 +1334,10 @@ function renderCustomers(){
       <td>${c.telefon ? escapeHtml(c.telefon) : "–"}</td>
       <td class="product-cell">${c.product ? `<span class="dot" style="background:${PRODUCT_COLORS[c.product] || '#2F5D50'}"></span>${escapeHtml(c.product)}` : "–"}</td>
       <td class="remark">${c.remark ? escapeHtml(c.remark) : "–"}</td>
-      <td><button class="del-btn" data-id="${c.id}">löschen</button></td>
+      <td class="pay">
+        <button class="del-btn edit-btn" data-id="${c.id}" data-action="edit">bearbeiten</button>
+        · <button class="del-btn" data-id="${c.id}" data-action="delete">löschen</button>
+      </td>
     </tr>
   `).join('');
 
@@ -1360,7 +1366,14 @@ function renderCustomers(){
   });
 
   area.querySelectorAll('.del-btn').forEach(btn => {
-    btn.addEventListener('click', () => deleteCustomer(btn.dataset.id));
+    btn.addEventListener('click', () => {
+      if(btn.dataset.action === 'edit'){
+        startEditCustomer(btn.dataset.id);
+      } else {
+        if(editingCustomerId === btn.dataset.id) cancelEditCustomer();
+        deleteCustomer(btn.dataset.id);
+      }
+    });
   });
 }
 
@@ -1568,6 +1581,44 @@ function deleteCustomer(id){
   saveCustomers();
 }
 
+function startEditCustomer(id){
+  const c = customers.find(cust => cust.id === id);
+  if(!c) return;
+
+  editingCustomerId = id;
+  document.getElementById('c-vorname').value = c.vorname || "";
+  document.getElementById('c-nachname').value = c.nachname || "";
+  document.getElementById('c-email').value = c.email || "";
+  document.getElementById('c-telefon').value = c.telefon || "";
+  document.getElementById('c-remark').value = c.remark || "";
+
+  selectedCustomerProduct = c.product || null;
+  document.getElementById('dd-cust-product-trigger').textContent = c.product || "Bitte wählen";
+  document.querySelectorAll('#dd-cust-product-menu .dd-option').forEach(o => {
+    o.classList.toggle('selected', o.dataset.v === c.product);
+  });
+
+  document.getElementById('custFormTitle').textContent = "Kunde bearbeiten";
+  document.getElementById('custFormSubmitBtn').textContent = "Änderungen speichern";
+  document.getElementById('custFormCancelBtn').style.display = "block";
+  document.getElementById('custFormErr').textContent = "";
+
+  document.getElementById('c-vorname').scrollIntoView({behavior:'smooth', block:'center'});
+  document.getElementById('c-vorname').focus();
+}
+
+function cancelEditCustomer(){
+  editingCustomerId = null;
+  document.getElementById('customerForm').reset();
+  selectedCustomerProduct = null;
+  document.getElementById('dd-cust-product-trigger').textContent = "Bitte wählen";
+  document.querySelectorAll('#dd-cust-product-menu .dd-option').forEach(o => o.classList.remove('selected'));
+  document.getElementById('custFormTitle').textContent = "Neuer Kunde";
+  document.getElementById('custFormSubmitBtn').textContent = "Kunde speichern";
+  document.getElementById('custFormCancelBtn').style.display = "none";
+  document.getElementById('custFormErr').textContent = "";
+}
+
 document.getElementById('entryForm').addEventListener('submit', (ev) => {
   ev.preventDefault();
   const errEl = document.getElementById('formErr');
@@ -1667,17 +1718,30 @@ document.getElementById('customerForm').addEventListener('submit', (ev) => {
     return;
   }
 
-  customers.push({
-    id: Date.now().toString(36) + Math.random().toString(36).slice(2,7),
-    vorname, nachname, email, telefon, product: product || "", remark
-  });
+  if(editingCustomerId){
+    const c = customers.find(cust => cust.id === editingCustomerId);
+    if(c){
+      c.vorname = vorname;
+      c.nachname = nachname;
+      c.email = email;
+      c.telefon = telefon;
+      c.product = product || "";
+      c.remark = remark;
+    }
+  } else {
+    customers.push({
+      id: Date.now().toString(36) + Math.random().toString(36).slice(2,7),
+      vorname, nachname, email, telefon, product: product || "", remark
+    });
+  }
 
-  ev.target.reset();
-  selectedCustomerProduct = null;
-  document.getElementById('dd-cust-product-trigger').textContent = "Bitte wählen";
-  document.querySelectorAll('#dd-cust-product-menu .dd-option').forEach(o => o.classList.remove('selected'));
+  cancelEditCustomer();
   renderCustomers();
   saveCustomers();
+});
+
+document.getElementById('custFormCancelBtn').addEventListener('click', () => {
+  cancelEditCustomer();
 });
 
 document.getElementById('custSearch').addEventListener('input', (ev) => {
