@@ -377,6 +377,31 @@ table.ledger tfoot td.amount{
   font-style:italic;
 }
 
+.excel-btn{
+  border:none;
+  background:var(--teal-deep);
+  color:#fff;
+  padding:9px 16px;
+  border-radius:3px;
+  font-size:0.86rem;
+  font-weight:600;
+  cursor:pointer;
+}
+.excel-btn:hover{background:var(--teal);}
+.excel-btn:disabled{background:var(--line); color:var(--ink-soft); cursor:not-allowed;}
+
+.tax-export-row{
+  display:flex;
+  align-items:center;
+  gap:12px;
+  flex-wrap:wrap;
+  margin-bottom:24px;
+  padding:14px 16px;
+  background:var(--good-bg);
+  border:1px solid var(--line);
+  border-radius:4px;
+}
+
 .tabs{
   display:flex;
   gap:4px;
@@ -597,6 +622,11 @@ table.ledger tfoot td.amount{
     <button type="button" class="tab-btn" data-tab="expense">Ausgaben</button>
     <button type="button" class="tab-btn" data-tab="cards">Teilnehmerkarten</button>
     <button type="button" class="tab-btn" data-tab="eur">Übersicht (EÜR)</button>
+  </div>
+
+  <div class="tax-export-row">
+    <button type="button" class="excel-btn" id="excelExportBtn">Excel für Steuererklärung erstellen</button>
+    <span class="backup-note">Erstellt eine Excel-Datei mit allen Einnahmen, Ausgaben, einem Journal aller Buchungen und einer EÜR-Übersicht (nach Produkt und Jahr) — unabhängig von der aktuellen Filterauswahl.</span>
   </div>
 
   <section id="tab-income" class="tab-panel active">
@@ -1506,6 +1536,164 @@ document.getElementById('expImportFile').addEventListener('change', (ev) => {
     ev.target.value = "";
   };
   reader.readAsText(file);
+});
+
+// ---- Excel-Export für die Steuererklärung ----
+
+function round2(n){
+  return Math.round((n + Number.EPSILON) * 100) / 100;
+}
+
+function setCurrencyCell(ws, ref){
+  if(ws[ref]){ ws[ref].t = 'n'; ws[ref].z = '#,##0.00 "€"'; }
+}
+
+function buildIncomeSheet(){
+  const sorted = [...entries].sort((a,b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id));
+  const numbers = assignNumbers(entries);
+  const aoa = [["Nr.","Datum","Name","Produkt","Bezahlung","Anzahl (Mehrfachkarte)","Bemerkung","Betrag (€)"]];
+  sorted.forEach(e => {
+    aoa.push([
+      numbers.get(e.id),
+      dateFmt(e.date),
+      e.name,
+      e.product,
+      e.payment,
+      e.count || 0,
+      e.remark || "",
+      round2(e.amount)
+    ]);
+  });
+  const total = entries.reduce((s,e) => s + e.amount, 0);
+  aoa.push(["", "", "", "", "", "", "Gesamt", round2(total)]);
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  for(let r = 2; r <= aoa.length; r++) setCurrencyCell(ws, 'H' + r);
+  ws['!cols'] = [{wch:5},{wch:12},{wch:22},{wch:30},{wch:14},{wch:12},{wch:32},{wch:14}];
+  return ws;
+}
+
+function buildExpenseSheet(){
+  const sorted = [...expenses].sort((a,b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id));
+  const numbers = assignNumbers(expenses);
+  const aoa = [["Nr.","Datum","Firma","Produkt","Betrag (€)"]];
+  sorted.forEach(e => {
+    aoa.push([
+      numbers.get(e.id),
+      dateFmt(e.date),
+      e.firma,
+      e.product,
+      round2(e.amount)
+    ]);
+  });
+  const total = expenses.reduce((s,e) => s + e.amount, 0);
+  aoa.push(["", "", "", "Gesamt", round2(total)]);
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  for(let r = 2; r <= aoa.length; r++) setCurrencyCell(ws, 'E' + r);
+  ws['!cols'] = [{wch:5},{wch:12},{wch:26},{wch:30},{wch:14}];
+  return ws;
+}
+
+function buildJournalSheet(){
+  const combined = [
+    ...entries.map(e => ({date: e.date, type: "Einnahme", who: e.name, product: e.product, amount: e.amount})),
+    ...expenses.map(e => ({date: e.date, type: "Ausgabe", who: e.firma, product: e.product, amount: -e.amount}))
+  ].sort((a,b) => a.date.localeCompare(b.date));
+
+  const aoa = [["Datum","Typ","Name / Firma","Produkt","Betrag (€)"]];
+  combined.forEach(r => {
+    aoa.push([dateFmt(r.date), r.type, r.who, r.product, round2(r.amount)]);
+  });
+  const total = combined.reduce((s,r) => s + r.amount, 0);
+  aoa.push(["", "", "", "Überschuss gesamt", round2(total)]);
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  for(let r = 2; r <= aoa.length; r++) setCurrencyCell(ws, 'E' + r);
+  ws['!cols'] = [{wch:12},{wch:12},{wch:24},{wch:30},{wch:16}];
+  return ws;
+}
+
+function buildOverviewSheet(){
+  const aoa = [];
+  const currencyRefs = [];
+
+  function addRow(cells, currencyCols){
+    const rowIndex = aoa.length + 1;
+    aoa.push(cells);
+    (currencyCols || []).forEach(col => currencyRefs.push(col + rowIndex));
+  }
+
+  addRow(["Einnahmen-Überschuss-Rechnung"]);
+  addRow([`Exportiert am ${dateFmt(new Date().toISOString().slice(0,10))}`]);
+  addRow([]);
+
+  addRow(["Nach Produkt"]);
+  addRow(["Produkt","Einnahmen (€)","Ausgaben (€)","Überschuss (€)"]);
+  let totalIncP = 0, totalExpP = 0;
+  PRODUCTS.forEach(p => {
+    const inc = entries.filter(e => e.product === p).reduce((s,e) => s + e.amount, 0);
+    const exp = expenses.filter(e => e.product === p).reduce((s,e) => s + e.amount, 0);
+    totalIncP += inc; totalExpP += exp;
+    addRow([p, round2(inc), round2(exp), round2(inc - exp)], ['B','C','D']);
+  });
+  addRow(["Gesamt", round2(totalIncP), round2(totalExpP), round2(totalIncP - totalExpP)], ['B','C','D']);
+  addRow([]);
+
+  addRow(["Nach Jahr"]);
+  addRow(["Jahr","Einnahmen (€)","Ausgaben (€)","Überschuss (€)"]);
+  const years = Array.from(new Set([
+    ...entries.map(e => e.date.slice(0,4)),
+    ...expenses.map(e => e.date.slice(0,4))
+  ])).sort();
+  let totalIncY = 0, totalExpY = 0;
+  years.forEach(y => {
+    const inc = entries.filter(e => e.date.slice(0,4) === y).reduce((s,e) => s + e.amount, 0);
+    const exp = expenses.filter(e => e.date.slice(0,4) === y).reduce((s,e) => s + e.amount, 0);
+    totalIncY += inc; totalExpY += exp;
+    addRow([y, round2(inc), round2(exp), round2(inc - exp)], ['B','C','D']);
+  });
+  if(years.length > 0){
+    addRow(["Gesamt", round2(totalIncY), round2(totalExpY), round2(totalIncY - totalExpY)], ['B','C','D']);
+  }
+
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  currencyRefs.forEach(ref => setCurrencyCell(ws, ref));
+  ws['!cols'] = [{wch:28},{wch:16},{wch:16},{wch:16}];
+  return ws;
+}
+
+let xlsxLoadPromise = null;
+function loadXlsxLib(){
+  if(window.XLSX) return Promise.resolve();
+  if(xlsxLoadPromise) return xlsxLoadPromise;
+  xlsxLoadPromise = new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+    script.onload = () => resolve();
+    script.onerror = () => { xlsxLoadPromise = null; reject(new Error('Konnte die Excel-Bibliothek nicht laden.')); };
+    document.head.appendChild(script);
+  });
+  return xlsxLoadPromise;
+}
+
+document.getElementById('excelExportBtn').addEventListener('click', async () => {
+  const btn = document.getElementById('excelExportBtn');
+  const originalText = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = "Wird erstellt…";
+  try{
+    await loadXlsxLib();
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, buildIncomeSheet(), "Einnahmen");
+    XLSX.utils.book_append_sheet(wb, buildExpenseSheet(), "Ausgaben");
+    XLSX.utils.book_append_sheet(wb, buildJournalSheet(), "Journal");
+    XLSX.utils.book_append_sheet(wb, buildOverviewSheet(), "Übersicht (EÜR)");
+    const today = new Date().toISOString().slice(0,10);
+    XLSX.writeFile(wb, `einnahmenbuch-steuererklaerung-${today}.xlsx`);
+  }catch(err){
+    alert("Die Excel-Datei konnte nicht erstellt werden. Bitte Internetverbindung prüfen und erneut versuchen.");
+  }finally{
+    btn.disabled = false;
+    btn.textContent = originalText;
+  }
 });
 </script>
 </body>
