@@ -1459,7 +1459,7 @@ document.getElementById('f-date').valueAsDate = new Date();
 document.getElementById('x-date').valueAsDate = new Date();
 
 setupDropdown('dd-product', PRODUCTS, true, v => selectedProduct = v);
-setupDropdown('dd-pay', ["Bar", "PayPal", "Überweisung"], false, v => selectedPayment = v);
+setupDropdown('dd-pay', ["Bar", "PayPal", "Überweisung", "Digistore"], false, v => selectedPayment = v);
 document.querySelector('#dd-pay-menu .dd-option[data-v="Bar"]').classList.add('selected');
 setupDropdown('dd-exp-product', PRODUCTS, true, v => selectedExpenseProduct = v);
 
