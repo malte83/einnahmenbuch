@@ -220,6 +220,8 @@ table.ledger th{
   white-space:nowrap;
 }
 table.ledger th.num, table.ledger td.num{text-align:right;}
+table.ledger th.sortable{cursor:pointer; user-select:none;}
+table.ledger th.sortable:hover{color:var(--teal-deep);}
 table.ledger td{
   padding:11px 14px;
   border-bottom:1px solid var(--line);
@@ -621,6 +623,7 @@ table.ledger tfoot td.amount{
     <button type="button" class="tab-btn active" data-tab="income">Einnahmen</button>
     <button type="button" class="tab-btn" data-tab="expense">Ausgaben</button>
     <button type="button" class="tab-btn" data-tab="cards">Teilnehmerkarten</button>
+    <button type="button" class="tab-btn" data-tab="customers">Kunden</button>
     <button type="button" class="tab-btn" data-tab="eur">Übersicht (EÜR)</button>
   </div>
 
@@ -750,6 +753,60 @@ table.ledger tfoot td.amount{
     <div id="cardsArea" class="loading">Lade Teilnehmerkarten…</div>
   </section>
 
+  <section id="tab-customers" class="tab-panel">
+  <div class="layout">
+
+    <div class="card">
+      <h2>Neuer Kunde</h2>
+      <form id="customerForm">
+        <label for="c-vorname">Vorname</label>
+        <input type="text" id="c-vorname" required>
+
+        <label for="c-nachname">Nachname</label>
+        <input type="text" id="c-nachname" required>
+
+        <label for="c-email">E-Mail-Adresse</label>
+        <input type="text" id="c-email" placeholder="optional">
+
+        <label for="c-telefon">Telefonnummer</label>
+        <input type="text" id="c-telefon" placeholder="optional">
+
+        <label>Produkt</label>
+        <div class="dropdown" id="dd-cust-product">
+          <button type="button" class="dd-trigger" id="dd-cust-product-trigger">Bitte wählen</button>
+          <div class="dd-menu" id="dd-cust-product-menu"></div>
+        </div>
+
+        <label for="c-remark">Bemerkung</label>
+        <textarea id="c-remark" placeholder="optional"></textarea>
+
+        <div class="err" id="custFormErr"></div>
+        <button type="submit" class="primary">Kunde speichern</button>
+      </form>
+    </div>
+
+    <div>
+      <label for="custSearch" style="margin-top:0;">Suche</label>
+      <input type="text" id="custSearch" placeholder="Name, E-Mail, Telefon, Produkt oder Bemerkung durchsuchen…">
+
+      <div class="list-head" style="margin-top:18px;">
+        <h2 style="font-family:'Fraunces',serif;font-weight:600;color:var(--teal-deep);">Kunden</h2>
+        <span class="list-count" id="custListCount"></span>
+      </div>
+
+      <div class="backup-row">
+        <button type="button" class="ghost-btn" id="custExportBtn">Sicherung exportieren</button>
+        <label class="ghost-btn" for="custImportFile">Sicherung importieren</label>
+        <input type="file" id="custImportFile" accept="application/json" style="display:none;">
+        <span class="backup-note">Speichere die Sicherungsdatei regelmäßig, damit nichts verloren geht.</span>
+      </div>
+
+      <div id="custListArea" class="loading">Lade Kunden…</div>
+    </div>
+
+  </div>
+  </section>
+
   <section id="tab-eur" class="tab-panel">
     <h2 style="font-family:'Fraunces',serif;font-weight:600;color:var(--teal-deep);margin:0 0 4px;">Einnahmen-Überschuss-Rechnung</h2>
     <p style="color:var(--ink-soft);font-size:0.88rem;margin:0 0 18px;">Wähle ein Produkt, um Einnahmen, Ausgaben und den verbleibenden Überschuss dafür zu sehen.</p>
@@ -847,6 +904,12 @@ const EXPENSE_STORAGE_KEY = "ausgaben-eintraege";
 let expenses = [];
 let activeExpenseFilter = "Alle";
 
+const CUSTOMER_STORAGE_KEY = "kunden-eintraege";
+let customers = [];
+let custSearchTerm = "";
+let custSortKey = "nachname";
+let custSortDir = "asc";
+
 let activeEurFilter = "Alle";
 let periodMode = "total";
 
@@ -878,6 +941,7 @@ const dateFmt = iso => {
 let selectedProduct = null;
 let selectedPayment = "Bar";
 let selectedExpenseProduct = null;
+let selectedCustomerProduct = null;
 
 function setupDropdown(prefix, options, withDots, onSelect){
   const trigger = document.getElementById(prefix + '-trigger');
@@ -1217,6 +1281,89 @@ function renderExpenseList(){
   renderEur();
 }
 
+function renderCustomers(){
+  const area = document.getElementById('custListArea');
+  if(!area) return;
+
+  const term = custSearchTerm.trim().toLowerCase();
+  let filtered = customers.filter(c => {
+    if(!term) return true;
+    const haystack = [c.vorname, c.nachname, c.email, c.telefon, c.product, c.remark]
+      .filter(Boolean).join(' ').toLowerCase();
+    return haystack.includes(term);
+  });
+
+  filtered = filtered.sort((a,b) => {
+    const va = (a[custSortKey] || '').toString().toLowerCase();
+    const vb = (b[custSortKey] || '').toString().toLowerCase();
+    const cmp = va.localeCompare(vb, 'de');
+    return custSortDir === 'asc' ? cmp : -cmp;
+  });
+
+  document.getElementById('custListCount').textContent =
+    filtered.length === 1 ? "1 Kunde" : `${filtered.length} Kunden`;
+
+  if(filtered.length === 0){
+    area.innerHTML = `<div class="empty">${customers.length === 0 ? "Noch keine Kunden angelegt." : "Keine Treffer für diese Suche."}</div>`;
+    return;
+  }
+
+  const columns = [
+    {key:'vorname', label:'Vorname'},
+    {key:'nachname', label:'Nachname'},
+    {key:'email', label:'E-Mail'},
+    {key:'telefon', label:'Telefon'},
+    {key:'product', label:'Produkt'},
+    {key:'remark', label:'Bemerkung'}
+  ];
+
+  const headHtml = columns.map(col => {
+    const active = custSortKey === col.key;
+    const arrow = active ? (custSortDir === 'asc' ? ' ▲' : ' ▼') : '';
+    return `<th class="sortable" data-key="${col.key}">${col.label}${arrow}</th>`;
+  }).join('');
+
+  const rows = filtered.map(c => `
+    <tr>
+      <td>${escapeHtml(c.vorname)}</td>
+      <td>${escapeHtml(c.nachname)}</td>
+      <td>${c.email ? escapeHtml(c.email) : "–"}</td>
+      <td>${c.telefon ? escapeHtml(c.telefon) : "–"}</td>
+      <td class="product-cell">${c.product ? `<span class="dot" style="background:${PRODUCT_COLORS[c.product] || '#2F5D50'}"></span>${escapeHtml(c.product)}` : "–"}</td>
+      <td class="remark">${c.remark ? escapeHtml(c.remark) : "–"}</td>
+      <td><button class="del-btn" data-id="${c.id}">löschen</button></td>
+    </tr>
+  `).join('');
+
+  area.innerHTML = `
+    <div class="table-wrap">
+      <table class="ledger">
+        <thead>
+          <tr>${headHtml}<th></th></tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+  `;
+
+  area.querySelectorAll('th.sortable').forEach(th => {
+    th.addEventListener('click', () => {
+      const key = th.dataset.key;
+      if(custSortKey === key){
+        custSortDir = custSortDir === 'asc' ? 'desc' : 'asc';
+      } else {
+        custSortKey = key;
+        custSortDir = 'asc';
+      }
+      renderCustomers();
+    });
+  });
+
+  area.querySelectorAll('.del-btn').forEach(btn => {
+    btn.addEventListener('click', () => deleteCustomer(btn.dataset.id));
+  });
+}
+
 function renderEurFilters(){
   const row = document.getElementById('eurFilterRow');
   const all = ["Alle", ...PRODUCTS];
@@ -1396,6 +1543,31 @@ function deleteExpense(id){
   saveExpenses();
 }
 
+function loadCustomers(){
+  try{
+    const raw = localStorage.getItem(CUSTOMER_STORAGE_KEY);
+    customers = raw ? JSON.parse(raw) : [];
+  }catch(err){
+    customers = [];
+  }
+  if(migrateProductNames(customers)) saveCustomers();
+  renderCustomers();
+}
+
+function saveCustomers(){
+  try{
+    localStorage.setItem(CUSTOMER_STORAGE_KEY, JSON.stringify(customers));
+  }catch(err){
+    document.getElementById('custFormErr').textContent = "Speichern fehlgeschlagen — bitte erneut versuchen.";
+  }
+}
+
+function deleteCustomer(id){
+  customers = customers.filter(c => c.id !== id);
+  renderCustomers();
+  saveCustomers();
+}
+
 document.getElementById('entryForm').addEventListener('submit', (ev) => {
   ev.preventDefault();
   const errEl = document.getElementById('formErr');
@@ -1478,6 +1650,41 @@ document.getElementById('expenseForm').addEventListener('submit', (ev) => {
   saveExpenses();
 });
 
+document.getElementById('customerForm').addEventListener('submit', (ev) => {
+  ev.preventDefault();
+  const errEl = document.getElementById('custFormErr');
+  errEl.textContent = "";
+
+  const vorname = document.getElementById('c-vorname').value.trim();
+  const nachname = document.getElementById('c-nachname').value.trim();
+  const email = document.getElementById('c-email').value.trim();
+  const telefon = document.getElementById('c-telefon').value.trim();
+  const product = selectedCustomerProduct;
+  const remark = document.getElementById('c-remark').value.trim();
+
+  if(!vorname || !nachname){
+    errEl.textContent = "Bitte Vor- und Nachname ausfüllen.";
+    return;
+  }
+
+  customers.push({
+    id: Date.now().toString(36) + Math.random().toString(36).slice(2,7),
+    vorname, nachname, email, telefon, product: product || "", remark
+  });
+
+  ev.target.reset();
+  selectedCustomerProduct = null;
+  document.getElementById('dd-cust-product-trigger').textContent = "Bitte wählen";
+  document.querySelectorAll('#dd-cust-product-menu .dd-option').forEach(o => o.classList.remove('selected'));
+  renderCustomers();
+  saveCustomers();
+});
+
+document.getElementById('custSearch').addEventListener('input', (ev) => {
+  custSearchTerm = ev.target.value;
+  renderCustomers();
+});
+
 // default date = today
 document.getElementById('f-date').valueAsDate = new Date();
 document.getElementById('x-date').valueAsDate = new Date();
@@ -1486,9 +1693,11 @@ setupDropdown('dd-product', PRODUCTS, true, v => selectedProduct = v);
 setupDropdown('dd-pay', ["Bar", "PayPal", "Überweisung", "Digistore"], false, v => selectedPayment = v);
 document.querySelector('#dd-pay-menu .dd-option[data-v="Bar"]').classList.add('selected');
 setupDropdown('dd-exp-product', PRODUCTS, true, v => selectedExpenseProduct = v);
+setupDropdown('dd-cust-product', PRODUCTS, true, v => selectedCustomerProduct = v);
 
 loadEntries();
 loadExpenses();
+loadCustomers();
 renderCardFilters();
 renderCards();
 renderEurFilters();
@@ -1515,6 +1724,8 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
       renderExpenseList();
     } else if(btn.dataset.tab === 'cards'){
       renderCards();
+    } else if(btn.dataset.tab === 'customers'){
+      renderCustomers();
     } else {
       renderEur();
     }
@@ -1599,6 +1810,49 @@ document.getElementById('expImportFile').addEventListener('change', (ev) => {
       alert(added > 0
         ? `${added} Ausgaben aus der Sicherung übernommen.`
         : "Keine neuen Ausgaben gefunden — die Sicherung war bereits vollständig vorhanden.");
+    }catch(err){
+      alert("Diese Datei konnte nicht gelesen werden. Bitte eine gültige Sicherungsdatei wählen.");
+    }
+    ev.target.value = "";
+  };
+  reader.readAsText(file);
+});
+
+document.getElementById('custExportBtn').addEventListener('click', () => {
+  const blob = new Blob([JSON.stringify(customers, null, 2)], {type: 'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const today = new Date().toISOString().slice(0,10);
+  a.href = url;
+  a.download = `kunden-sicherung-${today}.json`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+});
+
+document.getElementById('custImportFile').addEventListener('change', (ev) => {
+  const file = ev.target.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try{
+      const imported = JSON.parse(reader.result);
+      if(!Array.isArray(imported)) throw new Error("ungültiges Format");
+      const existingIds = new Set(customers.map(c => c.id));
+      let added = 0;
+      imported.forEach(c => {
+        if(c && c.id && !existingIds.has(c.id)){
+          customers.push(c);
+          existingIds.add(c.id);
+          added++;
+        }
+      });
+      saveCustomers();
+      renderCustomers();
+      alert(added > 0
+        ? `${added} Kunden aus der Sicherung übernommen.`
+        : "Keine neuen Kunden gefunden — die Sicherung war bereits vollständig vorhanden.");
     }catch(err){
       alert("Diese Datei konnte nicht gelesen werden. Bitte eine gültige Sicherungsdatei wählen.");
     }
