@@ -772,6 +772,9 @@ table.ledger tfoot td.amount{
         <label for="c-telefon">Telefonnummer</label>
         <input type="text" id="c-telefon" placeholder="optional">
 
+        <label for="c-geburtstag">Geburtstag</label>
+        <input type="date" id="c-geburtstag">
+
         <label>Produkt</label>
         <div class="dropdown" id="dd-cust-product">
           <button type="button" class="dd-trigger" id="dd-cust-product-trigger">Bitte wählen</button>
@@ -1291,7 +1294,7 @@ function renderCustomers(){
   const term = custSearchTerm.trim().toLowerCase();
   let filtered = customers.filter(c => {
     if(!term) return true;
-    const haystack = [c.vorname, c.nachname, c.email, c.telefon, c.product, c.remark]
+    const haystack = [c.vorname, c.nachname, c.email, c.telefon, c.geburtstag ? dateFmt(c.geburtstag) : "", c.product, c.remark]
       .filter(Boolean).join(' ').toLowerCase();
     return haystack.includes(term);
   });
@@ -1316,6 +1319,7 @@ function renderCustomers(){
     {key:'nachname', label:'Nachname'},
     {key:'email', label:'E-Mail'},
     {key:'telefon', label:'Telefon'},
+    {key:'geburtstag', label:'Geburtstag'},
     {key:'product', label:'Produkt'},
     {key:'remark', label:'Bemerkung'}
   ];
@@ -1332,6 +1336,7 @@ function renderCustomers(){
       <td>${escapeHtml(c.nachname)}</td>
       <td>${c.email ? escapeHtml(c.email) : "–"}</td>
       <td>${c.telefon ? escapeHtml(c.telefon) : "–"}</td>
+      <td>${c.geburtstag ? dateFmt(c.geburtstag) : "–"}</td>
       <td class="product-cell">${c.product ? `<span class="dot" style="background:${PRODUCT_COLORS[c.product] || '#2F5D50'}"></span>${escapeHtml(c.product)}` : "–"}</td>
       <td class="remark">${c.remark ? escapeHtml(c.remark) : "–"}</td>
       <td class="pay">
@@ -1567,6 +1572,22 @@ function loadCustomers(){
   renderCustomers();
 }
 
+// Prüft, ob heute (Tag/Monat, unabhängig vom Geburtsjahr) ein Kunde
+// Geburtstag hat, und zeigt ggf. eine Erinnerung als Popup.
+function checkBirthdaysToday(){
+  const today = new Date();
+  const todayMonthDay = String(today.getMonth()+1).padStart(2,'0') + '-' + String(today.getDate()).padStart(2,'0');
+
+  const matches = customers.filter(c => c.geburtstag && c.geburtstag.slice(5,10) === todayMonthDay);
+  if(matches.length === 0) return;
+
+  const names = matches.map(c => `${c.vorname} ${c.nachname}`.trim());
+  const message = matches.length === 1
+    ? `🎂 Heute hat ${names[0]} Geburtstag!`
+    : `🎂 Heute haben folgende Personen Geburtstag:\n${names.join('\n')}`;
+  alert(message);
+}
+
 function saveCustomers(){
   try{
     localStorage.setItem(CUSTOMER_STORAGE_KEY, JSON.stringify(customers));
@@ -1590,6 +1611,7 @@ function startEditCustomer(id){
   document.getElementById('c-nachname').value = c.nachname || "";
   document.getElementById('c-email').value = c.email || "";
   document.getElementById('c-telefon').value = c.telefon || "";
+  document.getElementById('c-geburtstag').value = c.geburtstag || "";
   document.getElementById('c-remark').value = c.remark || "";
 
   selectedCustomerProduct = c.product || null;
@@ -1710,6 +1732,7 @@ document.getElementById('customerForm').addEventListener('submit', (ev) => {
   const nachname = document.getElementById('c-nachname').value.trim();
   const email = document.getElementById('c-email').value.trim();
   const telefon = document.getElementById('c-telefon').value.trim();
+  const geburtstag = document.getElementById('c-geburtstag').value;
   const product = selectedCustomerProduct;
   const remark = document.getElementById('c-remark').value.trim();
 
@@ -1725,13 +1748,14 @@ document.getElementById('customerForm').addEventListener('submit', (ev) => {
       c.nachname = nachname;
       c.email = email;
       c.telefon = telefon;
+      c.geburtstag = geburtstag;
       c.product = product || "";
       c.remark = remark;
     }
   } else {
     customers.push({
       id: Date.now().toString(36) + Math.random().toString(36).slice(2,7),
-      vorname, nachname, email, telefon, product: product || "", remark
+      vorname, nachname, email, telefon, geburtstag, product: product || "", remark
     });
   }
 
@@ -1762,6 +1786,7 @@ setupDropdown('dd-cust-product', PRODUCTS, true, v => selectedCustomerProduct = 
 loadEntries();
 loadExpenses();
 loadCustomers();
+checkBirthdaysToday();
 renderCardFilters();
 renderCards();
 renderEurFilters();
