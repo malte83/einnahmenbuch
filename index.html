@@ -802,7 +802,7 @@ table.ledger tfoot td.amount{
 
 <script>
 const PRODUCTS = [
-  "Montagsmahlen",
+  "Montagsmalen",
   "Pinselplausch",
   "Fotographieren statt Funktionieren",
   "Sichtweise",
@@ -812,7 +812,7 @@ const PRODUCTS = [
 ];
 
 const PRODUCT_COLORS = {
-  "Montagsmahlen": "#2F5D50",
+  "Montagsmalen": "#2F5D50",
   "Pinselplausch": "#C1862F",
   "Fotographieren statt Funktionieren": "#3E6E8E",
   "Sichtweise": "#7A5A82",
@@ -820,6 +820,23 @@ const PRODUCT_COLORS = {
   "Atemlinie statt Kopfchaos": "#B15A5E",
   "Gefühlscompass": "#A85B3A"
 };
+
+// Produktname wurde von "Montagsmahlen" zu "Montagsmalen" korrigiert.
+// Bereits gespeicherte Einträge/Ausgaben mit dem alten Namen werden beim
+// Laden einmalig migriert, damit Filter, EÜR-Übersicht und Excel-Export
+// weiterhin korrekt zuordnen.
+const PRODUCT_RENAMES = { "Montagsmahlen": "Montagsmalen" };
+function migrateProductNames(list){
+  let changed = false;
+  list.forEach(item => {
+    const renamed = PRODUCT_RENAMES[item.product];
+    if(renamed){
+      item.product = renamed;
+      changed = true;
+    }
+  });
+  return changed;
+}
 
 const STORAGE_KEY = "einnahmen-eintraege";
 let entries = [];
@@ -1329,6 +1346,7 @@ function loadEntries(){
   }catch(err){
     entries = [];
   }
+  if(migrateProductNames(entries)) saveEntries();
   renderFilters();
   renderList();
 }
@@ -1354,6 +1372,7 @@ function loadExpenses(){
   }catch(err){
     expenses = [];
   }
+  if(migrateProductNames(expenses)) saveExpenses();
   renderExpenseFilters();
   renderExpenseList();
 }
