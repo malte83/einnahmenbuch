@@ -991,6 +991,24 @@ function assignNumbers(list){
   return map;
 }
 
+// Findet eine bereits bestehende, noch nicht aufgebrauchte Mehrfachkarte
+// derselben Person (Name, Groß-/Kleinschreibung & Leerzeichen egal) für
+// dasselbe Produkt. Bei mehreren Treffern wird die zuletzt gekaufte genommen.
+function findOpenCard(name, product){
+  const normalized = name.trim().toLowerCase();
+  const candidates = entries.filter(e => {
+    if((e.name || "").trim().toLowerCase() !== normalized) return false;
+    if(e.product !== product) return false;
+    const total = e.count || 0;
+    if(total <= 0) return false;
+    const remaining = total - (e.attendance ? e.attendance.length : 0);
+    return remaining > 0;
+  });
+  if(candidates.length === 0) return null;
+  candidates.sort((a,b) => b.date.localeCompare(a.date));
+  return candidates[0];
+}
+
 function renderCardFilters(){
   const row = document.getElementById('cardFilterRow');
   const all = ["Alle", ...PRODUCTS];
@@ -1364,9 +1382,26 @@ document.getElementById('entryForm').addEventListener('submit', (ev) => {
     return;
   }
 
+  // Namensüberprüfung: Wird eine weitere Mehrfachkarte für eine Person
+  // gebucht, die für dasselbe Produkt noch eine offene (nicht aufgebrauchte)
+  // Karte hat, wird die neue Anzahl auf die bestehende Karte addiert, statt
+  // eine zweite, parallele Karte anzulegen.
+  let entryCount = count;
+  let remark2 = remark;
+  const openCard = count > 0 ? findOpenCard(name, product) : null;
+  if(openCard){
+    const remainingBefore = (openCard.count || 0) - (openCard.attendance ? openCard.attendance.length : 0);
+    openCard.count = (openCard.count || 0) + count;
+    const remainingAfter = openCard.count - (openCard.attendance ? openCard.attendance.length : 0);
+    entryCount = 0;
+    const note = `Aufstockung bestehende Karte (+${count})`;
+    remark2 = remark ? `${remark} — ${note}` : note;
+    alert(`${name} hat für „${product}“ noch eine Karte mit ${remainingBefore} verbleibenden Terminen. Die neuen ${count} wurden zur bestehenden Karte hinzugefügt (jetzt ${remainingAfter} verbleibend).`);
+  }
+
   entries.push({
     id: Date.now().toString(36) + Math.random().toString(36).slice(2,7),
-    name, date, product, amount, payment, remark, count, attendance: []
+    name, date, product, amount, payment, remark: remark2, count: entryCount, attendance: []
   });
 
   ev.target.reset();
