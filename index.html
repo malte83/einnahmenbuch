@@ -984,10 +984,20 @@ function escapeHtml(s){
   return d.innerHTML;
 }
 
+// Vergibt fortlaufende Belegnummern abhängig vom eingetragenen Datum:
+// chronologisch sortiert und je Kalenderjahr neu bei 1 beginnend, z. B.
+// "2025-001", "2025-002", "2026-001" — üblich für Belegnummern in der
+// Steuererklärung. Gilt gleichermaßen für Einnahmen und Ausgaben, je nach
+// übergebener Liste.
 function assignNumbers(list){
   const sorted = [...list].sort((a,b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id));
   const map = new Map();
-  sorted.forEach((e,i) => map.set(e.id, i+1));
+  const yearCounters = {};
+  sorted.forEach(e => {
+    const year = e.date.slice(0,4);
+    yearCounters[year] = (yearCounters[year] || 0) + 1;
+    map.set(e.id, `${year}-${String(yearCounters[year]).padStart(3,'0')}`);
+  });
   return map;
 }
 
@@ -1603,7 +1613,7 @@ function buildIncomeSheet(){
   aoa.push(["", "", "", "", "", "", "Gesamt", round2(total)]);
   const ws = XLSX.utils.aoa_to_sheet(aoa);
   for(let r = 2; r <= aoa.length; r++) setCurrencyCell(ws, 'H' + r);
-  ws['!cols'] = [{wch:5},{wch:12},{wch:22},{wch:30},{wch:14},{wch:12},{wch:32},{wch:14}];
+  ws['!cols'] = [{wch:10},{wch:12},{wch:22},{wch:30},{wch:14},{wch:12},{wch:32},{wch:14}];
   return ws;
 }
 
@@ -1624,7 +1634,7 @@ function buildExpenseSheet(){
   aoa.push(["", "", "", "Gesamt", round2(total)]);
   const ws = XLSX.utils.aoa_to_sheet(aoa);
   for(let r = 2; r <= aoa.length; r++) setCurrencyCell(ws, 'E' + r);
-  ws['!cols'] = [{wch:5},{wch:12},{wch:26},{wch:30},{wch:14}];
+  ws['!cols'] = [{wch:10},{wch:12},{wch:26},{wch:30},{wch:14}];
   return ws;
 }
 
