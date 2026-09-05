@@ -946,6 +946,7 @@ table.ledger tfoot td.amount{
             <th class="num">Einnahmen</th>
             <th class="num">Ausgaben</th>
             <th class="num">Überschuss</th>
+            <th class="num" id="eurReserveHeader" style="display:none;">20% vom Gewinn</th>
           </tr>
         </thead>
         <tbody id="eurTableBody"></tbody>
@@ -1532,6 +1533,9 @@ function renderEur(){
   document.getElementById('eurBreakdownHeader').textContent =
     periodMode === 'total' ? 'Produkt' : (periodMode === 'month' ? 'Monat' : 'Quartal');
 
+  const showReserve = periodMode === 'quarter';
+  document.getElementById('eurReserveHeader').style.display = showReserve ? '' : 'none';
+
   let rows;
   if(periodMode === 'total'){
     rows = PRODUCTS.map(p => {
@@ -1564,7 +1568,7 @@ function renderEur(){
 
   if(rows.length === 0){
     document.getElementById('eurTableBody').innerHTML =
-      `<tr><td colspan="4" style="color:var(--ink-soft);font-style:italic;">Keine Daten für diesen Zeitraum.</td></tr>`;
+      `<tr><td colspan="${showReserve ? 5 : 4}" style="color:var(--ink-soft);font-style:italic;">Keine Daten für diesen Zeitraum.</td></tr>`;
   } else {
     document.getElementById('eurTableBody').innerHTML = rows.map(r => `
       <tr>
@@ -1572,6 +1576,7 @@ function renderEur(){
         <td class="num amount">${eur(r.inc)}</td>
         <td class="num amount">${eur(r.exp)}</td>
         <td class="num amount" style="color:${r.net < 0 ? 'var(--rose)' : 'var(--teal-deep)'}">${eur(r.net)}</td>
+        ${showReserve ? `<td class="num amount">${eur(r.net * 0.2)}</td>` : ""}
       </tr>
     `).join('');
   }
@@ -1582,6 +1587,7 @@ function renderEur(){
       <td class="num amount">${eur(totalInc)}</td>
       <td class="num amount">${eur(totalExp)}</td>
       <td class="num amount" style="color:${totalNet < 0 ? 'var(--rose)' : 'var(--teal-deep)'}">${eur(totalNet)}</td>
+      ${showReserve ? `<td class="num amount">${eur(totalNet * 0.2)}</td>` : ""}
     </tr>
   `;
 
