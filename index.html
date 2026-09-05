@@ -284,14 +284,17 @@ table.ledger td{
   vertical-align:top;
 }
 table.ledger tbody tr:hover{background:var(--good-bg);}
+/* Kein display:flex — sonst verliert die Zelle ihr Tabellen-Layout und die
+   Trennlinie der Zeile wird direkt unter dem Produktnamen gezeichnet statt
+   am unteren Rand der Zeile. */
 table.ledger td.product-cell{
-  display:flex;
-  align-items:center;
-  gap:7px;
   white-space:nowrap;
 }
 table.ledger td.product-cell .dot{
-  width:8px; height:8px; border-radius:50%; flex:none;
+  display:inline-block;
+  width:8px; height:8px; border-radius:50%;
+  margin-right:7px;
+  vertical-align:middle;
 }
 table.ledger td.amount{
   font-family:'Fraunces', serif;
