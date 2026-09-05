@@ -276,6 +276,8 @@ table.ledger th{
   white-space:nowrap;
 }
 table.ledger th.num, table.ledger td.num{text-align:right;}
+table.ledger th.sortable{cursor:pointer; user-select:none;}
+table.ledger th.sortable:hover{color:var(--teal-deep);}
 table.ledger td{
   padding:11px 14px;
   border-bottom:1px solid var(--line);
@@ -457,6 +459,31 @@ table.ledger tfoot td.amount{
   font-size:0.76rem;
   color:var(--ink-soft);
   font-style:italic;
+}
+
+.excel-btn{
+  border:none;
+  background:var(--teal-deep);
+  color:#fff;
+  padding:9px 16px;
+  border-radius:3px;
+  font-size:0.86rem;
+  font-weight:600;
+  cursor:pointer;
+}
+.excel-btn:hover{background:var(--teal);}
+.excel-btn:disabled{background:var(--line); color:var(--ink-soft); cursor:not-allowed;}
+
+.tax-export-row{
+  display:flex;
+  align-items:center;
+  gap:12px;
+  flex-wrap:wrap;
+  margin-bottom:24px;
+  padding:14px 16px;
+  background:var(--good-bg);
+  border:1px solid var(--line);
+  border-radius:4px;
 }
 
 .tabs{
@@ -694,7 +721,13 @@ table.ledger tfoot td.amount{
     <button type="button" class="tab-btn active" data-tab="income">Einnahmen</button>
     <button type="button" class="tab-btn" data-tab="expense">Ausgaben</button>
     <button type="button" class="tab-btn" data-tab="cards">Teilnehmerkarten</button>
+    <button type="button" class="tab-btn" data-tab="customers">Kunden</button>
     <button type="button" class="tab-btn" data-tab="eur">Übersicht (EÜR)</button>
+  </div>
+
+  <div class="tax-export-row">
+    <button type="button" class="excel-btn" id="excelExportBtn">Excel für Steuererklärung erstellen</button>
+    <span class="backup-note">Erstellt eine Excel-Datei mit allen Einnahmen, Ausgaben, einem Journal aller Buchungen und einer EÜR-Übersicht (nach Produkt und Jahr) — unabhängig von der aktuellen Filterauswahl.</span>
   </div>
 
   <section id="tab-income" class="tab-panel active">
@@ -820,6 +853,64 @@ table.ledger tfoot td.amount{
     <div id="cardsArea" class="loading">Lade Teilnehmerkarten…</div>
   </section>
 
+  <section id="tab-customers" class="tab-panel">
+  <div class="layout">
+
+    <div class="card">
+      <h2 id="custFormTitle">Neuer Kunde</h2>
+      <form id="customerForm">
+        <label for="c-vorname">Vorname</label>
+        <input type="text" id="c-vorname" required>
+
+        <label for="c-nachname">Nachname</label>
+        <input type="text" id="c-nachname" required>
+
+        <label for="c-email">E-Mail-Adresse</label>
+        <input type="text" id="c-email" placeholder="optional">
+
+        <label for="c-telefon">Telefonnummer</label>
+        <input type="text" id="c-telefon" placeholder="optional">
+
+        <label for="c-geburtstag">Geburtstag</label>
+        <input type="date" id="c-geburtstag">
+
+        <label>Produkt</label>
+        <div class="dropdown" id="dd-cust-product">
+          <button type="button" class="dd-trigger" id="dd-cust-product-trigger">Bitte wählen</button>
+          <div class="dd-menu" id="dd-cust-product-menu"></div>
+        </div>
+
+        <label for="c-remark">Bemerkung</label>
+        <textarea id="c-remark" placeholder="optional"></textarea>
+
+        <div class="err" id="custFormErr"></div>
+        <button type="submit" class="primary" id="custFormSubmitBtn">Kunde speichern</button>
+        <button type="button" class="cancel-edit" id="custFormCancelBtn" style="display:none;">Bearbeitung abbrechen</button>
+      </form>
+    </div>
+
+    <div>
+      <label for="custSearch" style="margin-top:0;">Suche</label>
+      <input type="text" id="custSearch" placeholder="Name, E-Mail, Telefon, Produkt oder Bemerkung durchsuchen…">
+
+      <div class="list-head" style="margin-top:18px;">
+        <h2 style="font-family:'Fraunces',serif;font-weight:600;color:var(--teal-deep);">Kunden</h2>
+        <span class="list-count" id="custListCount"></span>
+      </div>
+
+      <div class="backup-row">
+        <button type="button" class="ghost-btn" id="custExportBtn">Sicherung exportieren</button>
+        <label class="ghost-btn" for="custImportFile">Sicherung importieren</label>
+        <input type="file" id="custImportFile" accept="application/json" style="display:none;">
+        <span class="backup-note">Speichere die Sicherungsdatei regelmäßig, damit nichts verloren geht.</span>
+      </div>
+
+      <div id="custListArea" class="loading">Lade Kunden…</div>
+    </div>
+
+  </div>
+  </section>
+
   <section id="tab-eur" class="tab-panel">
     <h2 style="font-family:'Fraunces',serif;font-weight:600;color:var(--teal-deep);margin:0 0 4px;">Einnahmen-Überschuss-Rechnung</h2>
     <p style="color:var(--ink-soft);font-size:0.88rem;margin:0 0 18px;">Wähle ein Produkt, um Einnahmen, Ausgaben und den verbleibenden Überschuss dafür zu sehen.</p>
@@ -889,6 +980,7 @@ const db = getFirestore(fbApp);
 const auth = getAuth(fbApp);
 const entriesDoc = doc(db, "einnahmenbuch", "einnahmen");
 const expensesDoc = doc(db, "einnahmenbuch", "ausgaben");
+const customersDoc = doc(db, "einnahmenbuch", "kunden");
 
 let cloudReady = false;
 let suppressSync = false;
@@ -900,7 +992,7 @@ function setSyncStatus(state, text){
   el.textContent = text;
 }
 const PRODUCTS = [
-  "Montagsmahlen",
+  "Montagsmalen",
   "Pinselplausch",
   "Fotographieren statt Funktionieren",
   "Sichtweise",
@@ -910,7 +1002,7 @@ const PRODUCTS = [
 ];
 
 const PRODUCT_COLORS = {
-  "Montagsmahlen": "#2F5D50",
+  "Montagsmalen": "#2F5D50",
   "Pinselplausch": "#C1862F",
   "Fotographieren statt Funktionieren": "#3E6E8E",
   "Sichtweise": "#7A5A82",
@@ -918,6 +1010,23 @@ const PRODUCT_COLORS = {
   "Atemlinie statt Kopfchaos": "#B15A5E",
   "Gefühlscompass": "#A85B3A"
 };
+
+// Produktname wurde von "Montagsmahlen" zu "Montagsmalen" korrigiert.
+// Bereits gespeicherte Einträge/Ausgaben/Kunden mit dem alten Namen werden
+// beim Laden einmalig migriert, damit Filter, EÜR-Übersicht und
+// Excel-Export weiterhin korrekt zuordnen.
+const PRODUCT_RENAMES = { "Montagsmahlen": "Montagsmalen" };
+function migrateProductNames(list){
+  let changed = false;
+  list.forEach(item => {
+    const renamed = PRODUCT_RENAMES[item.product];
+    if(renamed){
+      item.product = renamed;
+      changed = true;
+    }
+  });
+  return changed;
+}
 
 const STORAGE_KEY = "einnahmen-eintraege";
 let entries = [];
@@ -927,6 +1036,13 @@ let activeCardFilter = "Alle";
 const EXPENSE_STORAGE_KEY = "ausgaben-eintraege";
 let expenses = [];
 let activeExpenseFilter = "Alle";
+
+const CUSTOMER_STORAGE_KEY = "kunden-eintraege";
+let customers = [];
+let custSearchTerm = "";
+let custSortKey = "nachname";
+let custSortDir = "asc";
+let editingCustomerId = null;
 
 let activeEurFilter = "Alle";
 let periodMode = "total";
@@ -959,6 +1075,7 @@ const dateFmt = iso => {
 let selectedProduct = null;
 let selectedPayment = "Bar";
 let selectedExpenseProduct = null;
+let selectedCustomerProduct = null;
 let editingEntryId = null;
 let editingExpenseId = null;
 
@@ -1088,10 +1205,20 @@ function escapeHtml(s){
   return d.innerHTML;
 }
 
+// Vergibt fortlaufende Belegnummern abhängig vom eingetragenen Datum:
+// chronologisch sortiert und je Kalenderjahr neu bei 1 beginnend, z. B.
+// "2025-001", "2025-002", "2026-001" — üblich für Belegnummern in der
+// Steuererklärung. Gilt gleichermaßen für Einnahmen und Ausgaben, je nach
+// übergebener Liste.
 function assignNumbers(list){
   const sorted = [...list].sort((a,b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id));
   const map = new Map();
-  sorted.forEach((e,i) => map.set(e.id, i+1));
+  const yearCounters = {};
+  sorted.forEach(e => {
+    const year = e.date.slice(0,4);
+    yearCounters[year] = (yearCounters[year] || 0) + 1;
+    map.set(e.id, `${year}-${String(yearCounters[year]).padStart(3,'0')}`);
+  });
   return map;
 }
 
@@ -1103,6 +1230,24 @@ function setDropdownValue(prefix, value){
   menu.querySelectorAll('.dd-option').forEach(o => {
     o.classList.toggle('selected', o.dataset.v === value);
   });
+}
+
+// Findet eine bereits bestehende, noch nicht aufgebrauchte Mehrfachkarte
+// derselben Person (Name, Groß-/Kleinschreibung & Leerzeichen egal) für
+// dasselbe Produkt. Bei mehreren Treffern wird die zuletzt gekaufte genommen.
+function findOpenCard(name, product){
+  const normalized = name.trim().toLowerCase();
+  const candidates = entries.filter(e => {
+    if((e.name || "").trim().toLowerCase() !== normalized) return false;
+    if(e.product !== product) return false;
+    const total = e.count || 0;
+    if(total <= 0) return false;
+    const remaining = total - (e.attendance ? e.attendance.length : 0);
+    return remaining > 0;
+  });
+  if(candidates.length === 0) return null;
+  candidates.sort((a,b) => b.date.localeCompare(a.date));
+  return candidates[0];
 }
 
 function startEditEntry(id){
@@ -1254,6 +1399,11 @@ document.getElementById('cardsArea').addEventListener('click', (ev) => {
     entry.attendance.push(date);
     saveEntries();
     renderCards();
+
+    const remainingAfter = (entry.count || 0) - entry.attendance.length;
+    if(remainingAfter === 1){
+      alert(`${entry.name} hat für „${entry.product}“ nur noch 1 Termin übrig!`);
+    }
   }
   if(ev.target.classList.contains('ptcard-date-del')){
     const id = ev.target.dataset.id;
@@ -1484,6 +1634,7 @@ function loadEntries(){
   }catch(err){
     entries = [];
   }
+  if(migrateProductNames(entries)) saveEntries();
   renderFilters();
   renderList();
 }
@@ -1518,6 +1669,7 @@ function loadExpenses(){
   }catch(err){
     expenses = [];
   }
+  if(migrateProductNames(expenses)) saveExpenses();
   renderExpenseFilters();
   renderExpenseList();
 }
@@ -1543,6 +1695,188 @@ function deleteExpense(id){
   expenses = expenses.filter(e => e.id !== id);
   renderExpenseList();
   saveExpenses();
+}
+
+function renderCustomers(){
+  const area = document.getElementById('custListArea');
+  if(!area) return;
+
+  const term = custSearchTerm.trim().toLowerCase();
+  let filtered = customers.filter(c => {
+    if(!term) return true;
+    const haystack = [c.vorname, c.nachname, c.email, c.telefon, c.geburtstag ? dateFmt(c.geburtstag) : "", c.product, c.remark]
+      .filter(Boolean).join(' ').toLowerCase();
+    return haystack.includes(term);
+  });
+
+  filtered = filtered.sort((a,b) => {
+    const va = (a[custSortKey] || '').toString().toLowerCase();
+    const vb = (b[custSortKey] || '').toString().toLowerCase();
+    const cmp = va.localeCompare(vb, 'de');
+    return custSortDir === 'asc' ? cmp : -cmp;
+  });
+
+  document.getElementById('custListCount').textContent =
+    filtered.length === 1 ? "1 Kunde" : `${filtered.length} Kunden`;
+
+  if(filtered.length === 0){
+    area.innerHTML = `<div class="empty">${customers.length === 0 ? "Noch keine Kunden angelegt." : "Keine Treffer für diese Suche."}</div>`;
+    return;
+  }
+
+  const columns = [
+    {key:'vorname', label:'Vorname'},
+    {key:'nachname', label:'Nachname'},
+    {key:'email', label:'E-Mail'},
+    {key:'telefon', label:'Telefon'},
+    {key:'geburtstag', label:'Geburtstag'},
+    {key:'product', label:'Produkt'},
+    {key:'remark', label:'Bemerkung'}
+  ];
+
+  const headHtml = columns.map(col => {
+    const active = custSortKey === col.key;
+    const arrow = active ? (custSortDir === 'asc' ? ' ▲' : ' ▼') : '';
+    return `<th class="sortable" data-key="${col.key}">${col.label}${arrow}</th>`;
+  }).join('');
+
+  const rows = filtered.map(c => `
+    <tr>
+      <td>${escapeHtml(c.vorname)}</td>
+      <td>${escapeHtml(c.nachname)}</td>
+      <td>${c.email ? escapeHtml(c.email) : "–"}</td>
+      <td>${c.telefon ? escapeHtml(c.telefon) : "–"}</td>
+      <td>${c.geburtstag ? dateFmt(c.geburtstag) : "–"}</td>
+      <td class="product-cell">${c.product ? `<span class="dot" style="background:${PRODUCT_COLORS[c.product] || '#2F5D50'}"></span>${escapeHtml(c.product)}` : "–"}</td>
+      <td class="remark">${c.remark ? escapeHtml(c.remark) : "–"}</td>
+      <td><button class="edit-btn" data-id="${c.id}">bearb.</button> <button class="del-btn" data-id="${c.id}">löschen</button></td>
+    </tr>
+  `).join('');
+
+  area.innerHTML = `
+    <div class="table-wrap">
+      <table class="ledger">
+        <thead>
+          <tr>${headHtml}<th></th></tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+  `;
+
+  area.querySelectorAll('th.sortable').forEach(th => {
+    th.addEventListener('click', () => {
+      const key = th.dataset.key;
+      if(custSortKey === key){
+        custSortDir = custSortDir === 'asc' ? 'desc' : 'asc';
+      } else {
+        custSortKey = key;
+        custSortDir = 'asc';
+      }
+      renderCustomers();
+    });
+  });
+
+  area.querySelectorAll('.del-btn').forEach(btn => {
+    btn.addEventListener('click', () => deleteCustomer(btn.dataset.id));
+  });
+
+  area.querySelectorAll('.edit-btn').forEach(btn => {
+    btn.addEventListener('click', () => startEditCustomer(btn.dataset.id));
+  });
+}
+
+function loadCustomers(){
+  try{
+    const raw = localStorage.getItem(CUSTOMER_STORAGE_KEY);
+    customers = raw ? JSON.parse(raw) : [];
+  }catch(err){
+    customers = [];
+  }
+  if(migrateProductNames(customers)) saveCustomers();
+  renderCustomers();
+}
+
+function saveCustomers(){
+  try{
+    localStorage.setItem(CUSTOMER_STORAGE_KEY, JSON.stringify(customers));
+  }catch(err){
+    document.getElementById('custFormErr').textContent = "Speichern fehlgeschlagen — bitte erneut versuchen.";
+  }
+  pushCustomers();
+}
+
+function pushCustomers(){
+  if(!cloudReady || suppressSync) return;
+  setSyncStatus('syncing', 'Synchronisiere…');
+  setDoc(customersDoc, {data: JSON.stringify(customers)})
+    .then(() => setSyncStatus('ok', 'Alle Geräte aktuell'))
+    .catch(() => setSyncStatus('error', 'Nicht synchronisiert (offline?)'));
+}
+
+function deleteCustomer(id){
+  if(editingCustomerId === id) cancelEditCustomer();
+  customers = customers.filter(c => c.id !== id);
+  renderCustomers();
+  saveCustomers();
+}
+
+function startEditCustomer(id){
+  const c = customers.find(cust => cust.id === id);
+  if(!c) return;
+
+  editingCustomerId = id;
+  document.getElementById('c-vorname').value = c.vorname || "";
+  document.getElementById('c-nachname').value = c.nachname || "";
+  document.getElementById('c-email').value = c.email || "";
+  document.getElementById('c-telefon').value = c.telefon || "";
+  document.getElementById('c-geburtstag').value = c.geburtstag || "";
+  document.getElementById('c-remark').value = c.remark || "";
+
+  selectedCustomerProduct = c.product || null;
+  setDropdownValue('dd-cust-product', c.product || "Bitte wählen");
+
+  document.getElementById('custFormTitle').textContent = "Kunde bearbeiten";
+  document.getElementById('custFormSubmitBtn').textContent = "Änderungen speichern";
+  document.getElementById('custFormCancelBtn').style.display = "block";
+  document.getElementById('custFormErr').textContent = "";
+
+  document.getElementById('c-vorname').scrollIntoView({behavior:'smooth', block:'center'});
+  document.getElementById('c-vorname').focus();
+}
+
+function cancelEditCustomer(){
+  editingCustomerId = null;
+  document.getElementById('customerForm').reset();
+  selectedCustomerProduct = null;
+  setDropdownValue('dd-cust-product', "Bitte wählen");
+  document.getElementById('custFormTitle').textContent = "Neuer Kunde";
+  document.getElementById('custFormSubmitBtn').textContent = "Kunde speichern";
+  document.getElementById('custFormCancelBtn').style.display = "none";
+  document.getElementById('custFormErr').textContent = "";
+}
+
+// Prüft, ob heute (Tag/Monat, unabhängig vom Geburtsjahr) ein Kunde
+// Geburtstag hat, und zeigt ggf. eine Erinnerung als Popup. Da diese Prüfung
+// sowohl direkt beim Laden (lokale Daten) als auch nach jedem Cloud-Sync der
+// Kundendaten aufgerufen wird, verhindert ein Merker, dass dieselbe
+// Erinnerung mehrfach am selben Tag/Seitenaufruf angezeigt wird.
+let birthdayCheckShown = false;
+function checkBirthdaysToday(){
+  if(birthdayCheckShown) return;
+
+  const today = new Date();
+  const todayMonthDay = String(today.getMonth()+1).padStart(2,'0') + '-' + String(today.getDate()).padStart(2,'0');
+
+  const matches = customers.filter(c => c.geburtstag && c.geburtstag.slice(5,10) === todayMonthDay);
+  if(matches.length === 0) return;
+
+  birthdayCheckShown = true;
+  const names = matches.map(c => `${c.vorname} ${c.nachname}`.trim());
+  const message = matches.length === 1
+    ? `🎂 Heute hat ${names[0]} Geburtstag!`
+    : `🎂 Heute haben folgende Personen Geburtstag:\n${names.join('\n')}`;
+  alert(message);
 }
 
 document.getElementById('entryForm').addEventListener('submit', (ev) => {
@@ -1586,9 +1920,26 @@ document.getElementById('entryForm').addEventListener('submit', (ev) => {
     return;
   }
 
+  // Namensüberprüfung: Wird eine weitere Mehrfachkarte für eine Person
+  // gebucht, die für dasselbe Produkt noch eine offene (nicht aufgebrauchte)
+  // Karte hat, wird die neue Anzahl auf die bestehende Karte addiert, statt
+  // eine zweite, parallele Karte anzulegen.
+  let entryCount = count;
+  let remark2 = remark;
+  const openCard = count > 0 ? findOpenCard(name, product) : null;
+  if(openCard){
+    const remainingBefore = (openCard.count || 0) - (openCard.attendance ? openCard.attendance.length : 0);
+    openCard.count = (openCard.count || 0) + count;
+    const remainingAfter = openCard.count - (openCard.attendance ? openCard.attendance.length : 0);
+    entryCount = 0;
+    const note = `Aufstockung bestehende Karte (+${count})`;
+    remark2 = remark ? `${remark} — ${note}` : note;
+    alert(`${name} hat für „${product}“ noch eine Karte mit ${remainingBefore} verbleibenden Terminen. Die neuen ${count} wurden zur bestehenden Karte hinzugefügt (jetzt ${remainingAfter} verbleibend).`);
+  }
+
   entries.push({
     id: Date.now().toString(36) + Math.random().toString(36).slice(2,7),
-    name, date, product, amount, payment, remark, count, attendance: []
+    name, date, product, amount, payment, remark: remark2, count: entryCount, attendance: []
   });
 
   ev.target.reset();
@@ -1644,17 +1995,68 @@ document.getElementById('expenseForm').addEventListener('submit', (ev) => {
   saveExpenses();
 });
 
+document.getElementById('customerForm').addEventListener('submit', (ev) => {
+  ev.preventDefault();
+  const errEl = document.getElementById('custFormErr');
+  errEl.textContent = "";
+
+  const vorname = document.getElementById('c-vorname').value.trim();
+  const nachname = document.getElementById('c-nachname').value.trim();
+  const email = document.getElementById('c-email').value.trim();
+  const telefon = document.getElementById('c-telefon').value.trim();
+  const geburtstag = document.getElementById('c-geburtstag').value;
+  const product = selectedCustomerProduct;
+  const remark = document.getElementById('c-remark').value.trim();
+
+  if(!vorname || !nachname){
+    errEl.textContent = "Bitte Vor- und Nachname ausfüllen.";
+    return;
+  }
+
+  if(editingCustomerId){
+    const c = customers.find(cust => cust.id === editingCustomerId);
+    if(c){
+      c.vorname = vorname;
+      c.nachname = nachname;
+      c.email = email;
+      c.telefon = telefon;
+      c.geburtstag = geburtstag;
+      c.product = product || "";
+      c.remark = remark;
+    }
+  } else {
+    customers.push({
+      id: Date.now().toString(36) + Math.random().toString(36).slice(2,7),
+      vorname, nachname, email, telefon, geburtstag, product: product || "", remark
+    });
+  }
+
+  cancelEditCustomer();
+  renderCustomers();
+  saveCustomers();
+});
+
+document.getElementById('custFormCancelBtn').addEventListener('click', cancelEditCustomer);
+
+document.getElementById('custSearch').addEventListener('input', (ev) => {
+  custSearchTerm = ev.target.value;
+  renderCustomers();
+});
+
 // default date = today
 document.getElementById('f-date').valueAsDate = new Date();
 document.getElementById('x-date').valueAsDate = new Date();
 
 setupDropdown('dd-product', PRODUCTS, true, v => selectedProduct = v);
-setupDropdown('dd-pay', ["Bar", "PayPal", "Überweisung"], false, v => selectedPayment = v);
+setupDropdown('dd-pay', ["Bar", "PayPal", "Überweisung", "Digistore"], false, v => selectedPayment = v);
 document.querySelector('#dd-pay-menu .dd-option[data-v="Bar"]').classList.add('selected');
 setupDropdown('dd-exp-product', PRODUCTS, true, v => selectedExpenseProduct = v);
+setupDropdown('dd-cust-product', PRODUCTS, true, v => selectedCustomerProduct = v);
 
 loadEntries();
 loadExpenses();
+loadCustomers();
+checkBirthdaysToday();
 renderCardFilters();
 renderCards();
 renderEurFilters();
@@ -1681,6 +2083,8 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
       renderExpenseList();
     } else if(btn.dataset.tab === 'cards'){
       renderCards();
+    } else if(btn.dataset.tab === 'customers'){
+      renderCustomers();
     } else {
       renderEur();
     }
@@ -1773,6 +2177,49 @@ document.getElementById('expImportFile').addEventListener('change', (ev) => {
   reader.readAsText(file);
 });
 
+document.getElementById('custExportBtn').addEventListener('click', () => {
+  const blob = new Blob([JSON.stringify(customers, null, 2)], {type: 'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const today = new Date().toISOString().slice(0,10);
+  a.href = url;
+  a.download = `kunden-sicherung-${today}.json`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+});
+
+document.getElementById('custImportFile').addEventListener('change', (ev) => {
+  const file = ev.target.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try{
+      const imported = JSON.parse(reader.result);
+      if(!Array.isArray(imported)) throw new Error("ungültiges Format");
+      const existingIds = new Set(customers.map(c => c.id));
+      let added = 0;
+      imported.forEach(c => {
+        if(c && c.id && !existingIds.has(c.id)){
+          customers.push(c);
+          existingIds.add(c.id);
+          added++;
+        }
+      });
+      saveCustomers();
+      renderCustomers();
+      alert(added > 0
+        ? `${added} Kunden aus der Sicherung übernommen.`
+        : "Keine neuen Kunden gefunden — die Sicherung war bereits vollständig vorhanden.");
+    }catch(err){
+      alert("Diese Datei konnte nicht gelesen werden. Bitte eine gültige Sicherungsdatei wählen.");
+    }
+    ev.target.value = "";
+  };
+  reader.readAsText(file);
+});
+
 document.getElementById('cancelEditEntry').addEventListener('click', cancelEditEntry);
 document.getElementById('cancelEditExpense').addEventListener('click', cancelEditExpense);
 
@@ -1836,9 +2283,10 @@ setSyncStatus('syncing', 'Verbinde…');
 
 let entriesLoaded = false;
 let expensesLoaded = false;
+let customersLoaded = false;
 
 function finishInitialLoad(){
-  if(entriesLoaded && expensesLoaded && !cloudReady){
+  if(entriesLoaded && expensesLoaded && customersLoaded && !cloudReady){
     cloudReady = true;
     setSyncStatus('ok', 'Alle Geräte aktuell');
   }
@@ -1851,10 +2299,12 @@ onSnapshot(entriesDoc, (snap) => {
       if(Array.isArray(remote)){
         suppressSync = true;
         entries = remote;
+        const changed = migrateProductNames(entries);
         localStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
         renderFilters();
         renderList();
         suppressSync = false;
+        if(changed) pushEntries();
       }
     }catch(e){}
   }
@@ -1873,10 +2323,12 @@ onSnapshot(expensesDoc, (snap) => {
       if(Array.isArray(remote)){
         suppressSync = true;
         expenses = remote;
+        const changed = migrateProductNames(expenses);
         localStorage.setItem(EXPENSE_STORAGE_KEY, JSON.stringify(expenses));
         renderExpenseFilters();
         renderExpenseList();
         suppressSync = false;
+        if(changed) pushExpenses();
       }
     }catch(e){}
   }
@@ -1887,7 +2339,189 @@ onSnapshot(expensesDoc, (snap) => {
   expensesLoaded = true;
   finishInitialLoad();
 });
+
+onSnapshot(customersDoc, (snap) => {
+  if(snap.exists() && snap.data().data){
+    try{
+      const remote = JSON.parse(snap.data().data);
+      if(Array.isArray(remote)){
+        suppressSync = true;
+        customers = remote;
+        const changed = migrateProductNames(customers);
+        localStorage.setItem(CUSTOMER_STORAGE_KEY, JSON.stringify(customers));
+        renderCustomers();
+        suppressSync = false;
+        if(changed) pushCustomers();
+      }
+    }catch(e){}
+  }
+  customersLoaded = true;
+  finishInitialLoad();
+  checkBirthdaysToday();
+}, () => {
+  setSyncStatus('error', 'Keine Verbindung — lokal gespeichert');
+  customersLoaded = true;
+  finishInitialLoad();
+});
 }
+
+// ---- Excel-Export für die Steuererklärung ----
+
+function round2(n){
+  return Math.round((n + Number.EPSILON) * 100) / 100;
+}
+
+function setCurrencyCell(ws, ref){
+  if(ws[ref]){ ws[ref].t = 'n'; ws[ref].z = '#,##0.00 "€"'; }
+}
+
+function buildIncomeSheet(){
+  const sorted = [...entries].sort((a,b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id));
+  const numbers = assignNumbers(entries);
+  const aoa = [["Nr.","Datum","Name","Produkt","Bezahlung","Anzahl (Mehrfachkarte)","Bemerkung","Betrag (€)"]];
+  sorted.forEach(e => {
+    aoa.push([
+      numbers.get(e.id),
+      dateFmt(e.date),
+      e.name,
+      e.product,
+      e.payment,
+      e.count || 0,
+      e.remark || "",
+      round2(e.amount)
+    ]);
+  });
+  const total = entries.reduce((s,e) => s + e.amount, 0);
+  aoa.push(["", "", "", "", "", "", "Gesamt", round2(total)]);
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  for(let r = 2; r <= aoa.length; r++) setCurrencyCell(ws, 'H' + r);
+  ws['!cols'] = [{wch:10},{wch:12},{wch:22},{wch:30},{wch:14},{wch:12},{wch:32},{wch:14}];
+  return ws;
+}
+
+function buildExpenseSheet(){
+  const sorted = [...expenses].sort((a,b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id));
+  const numbers = assignNumbers(expenses);
+  const aoa = [["Nr.","Datum","Firma","Produkt","Betrag (€)"]];
+  sorted.forEach(e => {
+    aoa.push([
+      numbers.get(e.id),
+      dateFmt(e.date),
+      e.firma,
+      e.product,
+      round2(e.amount)
+    ]);
+  });
+  const total = expenses.reduce((s,e) => s + e.amount, 0);
+  aoa.push(["", "", "", "Gesamt", round2(total)]);
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  for(let r = 2; r <= aoa.length; r++) setCurrencyCell(ws, 'E' + r);
+  ws['!cols'] = [{wch:10},{wch:12},{wch:26},{wch:30},{wch:14}];
+  return ws;
+}
+
+function buildJournalSheet(){
+  const combined = [
+    ...entries.map(e => ({date: e.date, type: "Einnahme", who: e.name, product: e.product, amount: e.amount})),
+    ...expenses.map(e => ({date: e.date, type: "Ausgabe", who: e.firma, product: e.product, amount: -e.amount}))
+  ].sort((a,b) => a.date.localeCompare(b.date));
+
+  const aoa = [["Datum","Typ","Name / Firma","Produkt","Betrag (€)"]];
+  combined.forEach(r => {
+    aoa.push([dateFmt(r.date), r.type, r.who, r.product, round2(r.amount)]);
+  });
+  const total = combined.reduce((s,r) => s + r.amount, 0);
+  aoa.push(["", "", "", "Überschuss gesamt", round2(total)]);
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  for(let r = 2; r <= aoa.length; r++) setCurrencyCell(ws, 'E' + r);
+  ws['!cols'] = [{wch:12},{wch:12},{wch:24},{wch:30},{wch:16}];
+  return ws;
+}
+
+function buildOverviewSheet(){
+  const aoa = [];
+  const currencyRefs = [];
+
+  function addRow(cells, currencyCols){
+    const rowIndex = aoa.length + 1;
+    aoa.push(cells);
+    (currencyCols || []).forEach(col => currencyRefs.push(col + rowIndex));
+  }
+
+  addRow(["Einnahmen-Überschuss-Rechnung"]);
+  addRow([`Exportiert am ${dateFmt(new Date().toISOString().slice(0,10))}`]);
+  addRow([]);
+
+  addRow(["Nach Produkt"]);
+  addRow(["Produkt","Einnahmen (€)","Ausgaben (€)","Überschuss (€)"]);
+  let totalIncP = 0, totalExpP = 0;
+  PRODUCTS.forEach(p => {
+    const inc = entries.filter(e => e.product === p).reduce((s,e) => s + e.amount, 0);
+    const exp = expenses.filter(e => e.product === p).reduce((s,e) => s + e.amount, 0);
+    totalIncP += inc; totalExpP += exp;
+    addRow([p, round2(inc), round2(exp), round2(inc - exp)], ['B','C','D']);
+  });
+  addRow(["Gesamt", round2(totalIncP), round2(totalExpP), round2(totalIncP - totalExpP)], ['B','C','D']);
+  addRow([]);
+
+  addRow(["Nach Jahr"]);
+  addRow(["Jahr","Einnahmen (€)","Ausgaben (€)","Überschuss (€)"]);
+  const years = Array.from(new Set([
+    ...entries.map(e => e.date.slice(0,4)),
+    ...expenses.map(e => e.date.slice(0,4))
+  ])).sort();
+  let totalIncY = 0, totalExpY = 0;
+  years.forEach(y => {
+    const inc = entries.filter(e => e.date.slice(0,4) === y).reduce((s,e) => s + e.amount, 0);
+    const exp = expenses.filter(e => e.date.slice(0,4) === y).reduce((s,e) => s + e.amount, 0);
+    totalIncY += inc; totalExpY += exp;
+    addRow([y, round2(inc), round2(exp), round2(inc - exp)], ['B','C','D']);
+  });
+  if(years.length > 0){
+    addRow(["Gesamt", round2(totalIncY), round2(totalExpY), round2(totalIncY - totalExpY)], ['B','C','D']);
+  }
+
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  currencyRefs.forEach(ref => setCurrencyCell(ws, ref));
+  ws['!cols'] = [{wch:28},{wch:16},{wch:16},{wch:16}];
+  return ws;
+}
+
+let xlsxLoadPromise = null;
+function loadXlsxLib(){
+  if(window.XLSX) return Promise.resolve();
+  if(xlsxLoadPromise) return xlsxLoadPromise;
+  xlsxLoadPromise = new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+    script.onload = () => resolve();
+    script.onerror = () => { xlsxLoadPromise = null; reject(new Error('Konnte die Excel-Bibliothek nicht laden.')); };
+    document.head.appendChild(script);
+  });
+  return xlsxLoadPromise;
+}
+
+document.getElementById('excelExportBtn').addEventListener('click', async () => {
+  const btn = document.getElementById('excelExportBtn');
+  const originalText = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = "Wird erstellt…";
+  try{
+    await loadXlsxLib();
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, buildIncomeSheet(), "Einnahmen");
+    XLSX.utils.book_append_sheet(wb, buildExpenseSheet(), "Ausgaben");
+    XLSX.utils.book_append_sheet(wb, buildJournalSheet(), "Journal");
+    XLSX.utils.book_append_sheet(wb, buildOverviewSheet(), "Übersicht (EÜR)");
+    const today = new Date().toISOString().slice(0,10);
+    XLSX.writeFile(wb, `einnahmenbuch-steuererklaerung-${today}.xlsx`);
+  }catch(err){
+    alert("Die Excel-Datei konnte nicht erstellt werden. Bitte Internetverbindung prüfen und erneut versuchen.");
+  }finally{
+    btn.disabled = false;
+    btn.textContent = originalText;
+  }
+});
 </script>
 </body>
 </html>
