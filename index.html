@@ -733,6 +733,13 @@ table.ledger tfoot td.amount{
     <span class="backup-note">Erstellt eine Excel-Datei mit allen Einnahmen, Ausgaben, einem Journal aller Buchungen und einer EÜR-Übersicht (nach Produkt und Jahr) — unabhängig von der aktuellen Filterauswahl.</span>
   </div>
 
+  <div class="backup-row" style="margin-bottom:24px;">
+    <button type="button" class="ghost-btn" id="backupExportBtn">Sicherung exportieren</button>
+    <label class="ghost-btn" for="backupImportFile">Sicherung importieren</label>
+    <input type="file" id="backupImportFile" accept="application/json" style="display:none;">
+    <span class="backup-note">Sichert Einnahmen, Ausgaben und Kunden gemeinsam in einer Datei. Speichere sie regelmäßig, damit nichts verloren geht. Ältere Einzel-Sicherungen können weiterhin importiert werden.</span>
+  </div>
+
   <section id="tab-income" class="tab-panel active">
   <div class="layout">
 
@@ -783,13 +790,6 @@ table.ledger tfoot td.amount{
         <span class="list-count" id="listCount"></span>
       </div>
 
-      <div class="backup-row">
-        <button type="button" class="ghost-btn" id="exportBtn">Sicherung exportieren</button>
-        <label class="ghost-btn" for="importFile">Sicherung importieren</label>
-        <input type="file" id="importFile" accept="application/json" style="display:none;">
-        <span class="backup-note">Speichere die Sicherungsdatei regelmäßig, damit nichts verloren geht.</span>
-      </div>
-
       <div id="listArea" class="loading">Lade Einträge…</div>
     </div>
 
@@ -835,12 +835,6 @@ table.ledger tfoot td.amount{
       </div>
 
       <div class="backup-row">
-        <button type="button" class="ghost-btn" id="expExportBtn">Sicherung exportieren</button>
-        <label class="ghost-btn" for="expImportFile">Sicherung importieren</label>
-        <input type="file" id="expImportFile" accept="application/json" style="display:none;">
-        <span class="backup-note">Speichere die Sicherungsdatei regelmäßig, damit nichts verloren geht.</span>
-      </div>
-
       <div id="expListArea" class="loading">Lade Ausgaben…</div>
     </div>
 
@@ -901,12 +895,6 @@ table.ledger tfoot td.amount{
         <span class="list-count" id="custListCount"></span>
       </div>
 
-      <div class="backup-row">
-        <button type="button" class="ghost-btn" id="custExportBtn">Sicherung exportieren</button>
-        <label class="ghost-btn" for="custImportFile">Sicherung importieren</label>
-        <input type="file" id="custImportFile" accept="application/json" style="display:none;">
-        <span class="backup-note">Speichere die Sicherungsdatei regelmäßig, damit nichts verloren geht.</span>
-      </div>
 
       <div id="custListArea" class="loading">Lade Kunden…</div>
     </div>
@@ -2102,127 +2090,107 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
   });
 });
 
-document.getElementById('exportBtn').addEventListener('click', () => {
-  const blob = new Blob([JSON.stringify(entries, null, 2)], {type: 'application/json'});
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  const today = new Date().toISOString().slice(0,10);
-  a.href = url;
-  a.download = `einnahmen-sicherung-${today}.json`;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
-});
+// ---- Gemeinsame Sicherung: Einnahmen, Ausgaben und Kunden in einer Datei ----
 
-document.getElementById('importFile').addEventListener('change', (ev) => {
-  const file = ev.target.files[0];
-  if(!file) return;
-  const reader = new FileReader();
-  reader.onload = () => {
-    try{
-      const imported = JSON.parse(reader.result);
-      if(!Array.isArray(imported)) throw new Error("ungültiges Format");
-      const existingIds = new Set(entries.map(e => e.id));
-      let added = 0;
-      imported.forEach(e => {
-        if(e && e.id && !existingIds.has(e.id)){
-          entries.push(e);
-          existingIds.add(e.id);
-          added++;
-        }
-      });
-      saveEntries();
-      renderList();
-      alert(added > 0
-        ? `${added} Einträge aus der Sicherung übernommen.`
-        : "Keine neuen Einträge gefunden — die Sicherung war bereits vollständig vorhanden.");
-    }catch(err){
-      alert("Diese Datei konnte nicht gelesen werden. Bitte eine gültige Sicherungsdatei wählen.");
-    }
-    ev.target.value = "";
+document.getElementById('backupExportBtn').addEventListener('click', () => {
+  const today = new Date().toISOString().slice(0,10);
+  const backup = {
+    typ: "einnahmenbuch-sicherung",
+    version: 1,
+    exportiertAm: today,
+    einnahmen: entries,
+    ausgaben: expenses,
+    kunden: customers
   };
-  reader.readAsText(file);
-});
-
-document.getElementById('expExportBtn').addEventListener('click', () => {
-  const blob = new Blob([JSON.stringify(expenses, null, 2)], {type: 'application/json'});
+  const blob = new Blob([JSON.stringify(backup, null, 2)], {type: 'application/json'});
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
-  const today = new Date().toISOString().slice(0,10);
   a.href = url;
-  a.download = `ausgaben-sicherung-${today}.json`;
+  a.download = `einnahmenbuch-sicherung-${today}.json`;
   document.body.appendChild(a);
   a.click();
   a.remove();
   URL.revokeObjectURL(url);
 });
 
-document.getElementById('expImportFile').addEventListener('change', (ev) => {
-  const file = ev.target.files[0];
-  if(!file) return;
-  const reader = new FileReader();
-  reader.onload = () => {
-    try{
-      const imported = JSON.parse(reader.result);
-      if(!Array.isArray(imported)) throw new Error("ungültiges Format");
-      const existingIds = new Set(expenses.map(e => e.id));
-      let added = 0;
-      imported.forEach(e => {
-        if(e && e.id && !existingIds.has(e.id)){
-          expenses.push(e);
-          existingIds.add(e.id);
-          added++;
-        }
-      });
-      saveExpenses();
-      renderExpenseList();
-      alert(added > 0
-        ? `${added} Ausgaben aus der Sicherung übernommen.`
-        : "Keine neuen Ausgaben gefunden — die Sicherung war bereits vollständig vorhanden.");
-    }catch(err){
-      alert("Diese Datei konnte nicht gelesen werden. Bitte eine gültige Sicherungsdatei wählen.");
+// Übernimmt aus der Sicherung nur Datensätze, deren id noch nicht vorhanden
+// ist, und meldet zurück, wie viele hinzugekommen sind.
+function mergeById(target, incoming){
+  if(!Array.isArray(incoming)) return 0;
+  const existingIds = new Set(target.map(item => item.id));
+  let added = 0;
+  incoming.forEach(item => {
+    if(item && item.id && !existingIds.has(item.id)){
+      target.push(item);
+      existingIds.add(item.id);
+      added++;
     }
-    ev.target.value = "";
-  };
-  reader.readAsText(file);
-});
+  });
+  return added;
+}
 
-document.getElementById('custExportBtn').addEventListener('click', () => {
-  const blob = new Blob([JSON.stringify(customers, null, 2)], {type: 'application/json'});
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  const today = new Date().toISOString().slice(0,10);
-  a.href = url;
-  a.download = `kunden-sicherung-${today}.json`;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
-});
+// Ältere Sicherungen enthielten je Datei nur eine Liste ohne Kategorie-Angabe.
+// Anhand der Felder lässt sich erkennen, worum es sich handelt: Kunden haben
+// Vor-/Nachname, Ausgaben eine Firma, Einnahmen einen Namen.
+function splitLegacyBackup(list){
+  const result = {einnahmen: [], ausgaben: [], kunden: []};
+  list.forEach(item => {
+    if(!item || typeof item !== 'object') return;
+    if(item.vorname !== undefined || item.nachname !== undefined){
+      result.kunden.push(item);
+    } else if(item.firma !== undefined){
+      result.ausgaben.push(item);
+    } else if(item.name !== undefined){
+      result.einnahmen.push(item);
+    }
+  });
+  return result;
+}
 
-document.getElementById('custImportFile').addEventListener('change', (ev) => {
+document.getElementById('backupImportFile').addEventListener('change', (ev) => {
   const file = ev.target.files[0];
   if(!file) return;
   const reader = new FileReader();
   reader.onload = () => {
     try{
       const imported = JSON.parse(reader.result);
-      if(!Array.isArray(imported)) throw new Error("ungültiges Format");
-      const existingIds = new Set(customers.map(c => c.id));
-      let added = 0;
-      imported.forEach(c => {
-        if(c && c.id && !existingIds.has(c.id)){
-          customers.push(c);
-          existingIds.add(c.id);
-          added++;
+      let data;
+      if(Array.isArray(imported)){
+        data = splitLegacyBackup(imported);
+      } else if(imported && typeof imported === 'object'){
+        if(!Array.isArray(imported.einnahmen) && !Array.isArray(imported.ausgaben) && !Array.isArray(imported.kunden)){
+          throw new Error("ungültiges Format");
         }
-      });
-      saveCustomers();
-      renderCustomers();
-      alert(added > 0
-        ? `${added} Kunden aus der Sicherung übernommen.`
-        : "Keine neuen Kunden gefunden — die Sicherung war bereits vollständig vorhanden.");
+        data = {einnahmen: imported.einnahmen, ausgaben: imported.ausgaben, kunden: imported.kunden};
+      } else {
+        throw new Error("ungültiges Format");
+      }
+
+      const addedIncome = mergeById(entries, data.einnahmen);
+      const addedExpense = mergeById(expenses, data.ausgaben);
+      const addedCustomers = mergeById(customers, data.kunden);
+
+      if(addedIncome){
+        migrateProductNames(entries);
+        saveEntries();
+        renderFilters();
+        renderList();
+      }
+      if(addedExpense){
+        migrateProductNames(expenses);
+        saveExpenses();
+        renderExpenseFilters();
+        renderExpenseList();
+      }
+      if(addedCustomers){
+        migrateProductNames(customers);
+        saveCustomers();
+        renderCustomers();
+      }
+
+      alert((addedIncome + addedExpense + addedCustomers) > 0
+        ? `Aus der Sicherung übernommen:\n${addedIncome} Einnahmen\n${addedExpense} Ausgaben\n${addedCustomers} Kunden`
+        : "Keine neuen Daten gefunden — die Sicherung war bereits vollständig vorhanden.");
     }catch(err){
       alert("Diese Datei konnte nicht gelesen werden. Bitte eine gültige Sicherungsdatei wählen.");
     }
