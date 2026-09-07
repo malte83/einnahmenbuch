@@ -994,8 +994,8 @@ table.ledger tfoot td.amount{
       </div>
 
       <p style="color:var(--ink-soft);font-size:0.84rem;margin:0 0 16px;font-style:italic;">
-        Trage bei jedem Termin die Teilnehmer ein. Hat die Person eine offene Karte für diesen Kurs,
-        wird die Teilnahme automatisch von der Karte abgebucht — beim Entfernen wird sie wieder gutgeschrieben.
+        Trage bei jedem Termin die Teilnehmer ein. Daneben siehst du, wie viele Termine ihre Karte für diesen
+        Kurs noch hat. Abgebucht wird nichts automatisch — das machst du wie gewohnt im Reiter „Teilnehmerkarten“.
       </p>
 
       <datalist id="teilnehmerVorschlaege"></datalist>
@@ -2039,37 +2039,15 @@ function pushTermine(){
     .catch(() => setSyncStatus('error', 'Nicht synchronisiert (offline?)'));
 }
 
-// Beim Löschen eines Termins werden die dafür abgebuchten Teilnahmen wieder
-// auf den Karten gutgeschrieben, damit keine Termine verloren gehen.
 function deleteTermin(id){
   const t = termine.find(x => x.id === id);
   if(!t) return;
   const label = `${dateFmt(t.date)}${t.time ? ' ' + t.time : ''} · ${t.product}`;
-  if(!confirm(`Termin „${label}“ wirklich löschen?${(t.teilnehmer || []).length ? '\n\nAbgebuchte Teilnahmen werden den Karten wieder gutgeschrieben.' : ''}`)) return;
+  if(!confirm(`Termin „${label}“ wirklich löschen?`)) return;
 
-  let cardsChanged = false;
-  (t.teilnehmer || []).forEach(p => {
-    if(refundCard(p, t.date)) cardsChanged = true;
-  });
   termine = termine.filter(x => x.id !== id);
   saveTermine();
-  if(cardsChanged){
-    saveEntries();
-    renderCards();
-    renderCustomers();
-  }
   renderTermine();
-}
-
-// Bucht eine Teilnahme wieder von der Karte ab (Gutschrift).
-function refundCard(person, date){
-  if(!person || !person.karteId) return false;
-  const card = entries.find(e => e.id === person.karteId);
-  if(!card || !card.attendance) return false;
-  const idx = card.attendance.indexOf(date);
-  if(idx === -1) return false;
-  card.attendance.splice(idx, 1);
-  return true;
 }
 
 function renderTerminFilters(){
@@ -2172,9 +2150,9 @@ function renderTermine(){
     (vergangene.length ? `<div class="termin-section-head">Vergangene Termine</div>` + vergangene.map(t => cardHtml(t, true)).join('') : '');
 }
 
-// Trägt einen Teilnehmer ein und bucht — falls vorhanden — eine offene Karte
-// für diesen Kurs ab. Die Karten-id wird am Teilnehmer vermerkt, damit die
-// Teilnahme beim Entfernen gezielt wieder gutgeschrieben werden kann.
+// Trägt einen Teilnehmer beim Termin ein. Die Teilnehmerkarten bleiben davon
+// unberührt — abgebucht wird ausschließlich von Hand im Reiter
+// "Teilnehmerkarten". Hier wird nur angezeigt, wie viel noch übrig ist.
 function addTeilnehmer(terminId){
   const t = termine.find(x => x.id === terminId);
   if(!t) return;
@@ -2190,46 +2168,17 @@ function addTeilnehmer(terminId){
     return;
   }
 
-  const card = findOpenCard(name, t.product);
-  if(card){
-    if(!card.attendance) card.attendance = [];
-    card.attendance.push(t.date);
-  }
-  t.teilnehmer.push({name, karteId: card ? card.id : null});
-
+  t.teilnehmer.push({name});
   saveTermine();
-  if(card){
-    saveEntries();
-    renderCards();
-    renderCustomers();
-  }
   renderTermine();
-
-  if(card){
-    const remaining = (card.count || 0) - card.attendance.length;
-    if(remaining === 0){
-      alert(`${name} hat jetzt keine Termine mehr auf der Karte für „${t.product}“.`);
-    } else if(remaining === 1){
-      alert(`${name} hat für „${t.product}“ nur noch 1 Termin übrig!`);
-    }
-  }
 }
 
 function removeTeilnehmer(terminId, index){
   const t = termine.find(x => x.id === terminId);
   if(!t || !t.teilnehmer) return;
-  const person = t.teilnehmer[index];
-  if(!person) return;
-
-  const refunded = refundCard(person, t.date);
+  if(!t.teilnehmer[index]) return;
   t.teilnehmer.splice(index, 1);
-
   saveTermine();
-  if(refunded){
-    saveEntries();
-    renderCards();
-    renderCustomers();
-  }
   renderTermine();
 }
 
