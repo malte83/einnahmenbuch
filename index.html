@@ -1397,6 +1397,7 @@ document.getElementById('cardsArea').addEventListener('click', (ev) => {
     entry.attendance.push(date);
     saveEntries();
     renderCards();
+    renderCustomers();
 
     const remainingAfter = (entry.count || 0) - entry.attendance.length;
     if(remainingAfter === 1){
@@ -1412,6 +1413,7 @@ document.getElementById('cardsArea').addEventListener('click', (ev) => {
     if(idx > -1) entry.attendance.splice(idx, 1);
     saveEntries();
     renderCards();
+    renderCustomers();
   }
 });
 
@@ -1700,9 +1702,29 @@ function deleteExpense(id){
   saveExpenses();
 }
 
+// Ermittelt die noch offenen Termine der Teilnehmerkarten einer Person.
+// Der Wert wird bewusst nicht im Kundendatensatz gespeichert, sondern immer
+// live aus den Einnahmen berechnet, damit er beim Eintragen einer Teilnahme
+// nicht veraltet. Mehrere Karten derselben Person werden zusammengezählt.
+function cardStatsFor(c){
+  const key = `${c.vorname || ""} ${c.nachname || ""}`.trim().toLowerCase();
+  if(!key) return null;
+  let total = 0, used = 0;
+  entries.forEach(e => {
+    if((e.count || 0) <= 0) return;
+    if((e.name || "").trim().toLowerCase() !== key) return;
+    total += e.count;
+    used += e.attendance ? e.attendance.length : 0;
+  });
+  if(total === 0) return null;
+  return {total, remaining: Math.max(0, total - used)};
+}
+
 function renderCustomers(){
   const area = document.getElementById('custListArea');
   if(!area) return;
+
+  const cardStats = new Map(customers.map(c => [c.id, cardStatsFor(c)]));
 
   const term = custSearchTerm.trim().toLowerCase();
   let filtered = customers.filter(c => {
@@ -1713,6 +1735,12 @@ function renderCustomers(){
   });
 
   filtered = filtered.sort((a,b) => {
+    if(custSortKey === 'karte'){
+      const sa = cardStats.get(a.id);
+      const sb = cardStats.get(b.id);
+      const cmp = (sa ? sa.remaining : -1) - (sb ? sb.remaining : -1);
+      return custSortDir === 'asc' ? cmp : -cmp;
+    }
     const va = (a[custSortKey] || '').toString().toLowerCase();
     const vb = (b[custSortKey] || '').toString().toLowerCase();
     const cmp = va.localeCompare(vb, 'de');
@@ -1734,6 +1762,7 @@ function renderCustomers(){
     {key:'telefon', label:'Telefon'},
     {key:'geburtstag', label:'Geburtstag'},
     {key:'product', label:'Produkt'},
+    {key:'karte', label:'Karte offen'},
     {key:'remark', label:'Bemerkung'}
   ];
 
@@ -1743,7 +1772,12 @@ function renderCustomers(){
     return `<th class="sortable" data-key="${col.key}">${col.label}${arrow}</th>`;
   }).join('');
 
-  const rows = filtered.map(c => `
+  const rows = filtered.map(c => {
+    const st = cardStats.get(c.id);
+    const karte = st
+      ? `<span style="color:${st.remaining === 0 ? 'var(--rose)' : 'var(--teal-deep)'};font-weight:600;">${st.remaining}</span> / ${st.total}`
+      : "–";
+    return `
     <tr>
       <td>${escapeHtml(c.vorname)}</td>
       <td>${escapeHtml(c.nachname)}</td>
@@ -1751,10 +1785,12 @@ function renderCustomers(){
       <td>${c.telefon ? escapeHtml(c.telefon) : "–"}</td>
       <td>${c.geburtstag ? dateFmt(c.geburtstag) : "–"}</td>
       <td class="product-cell">${c.product ? `<span class="dot" style="background:${PRODUCT_COLORS[c.product] || '#2F5D50'}"></span>${escapeHtml(c.product)}` : "–"}</td>
+      <td style="white-space:nowrap;">${karte}</td>
       <td class="remark">${c.remark ? escapeHtml(c.remark) : "–"}</td>
       <td><button class="edit-btn" data-id="${c.id}">bearb.</button> <button class="del-btn" data-id="${c.id}">löschen</button></td>
     </tr>
-  `).join('');
+  `;
+  }).join('');
 
   area.innerHTML = `
     <div class="table-wrap">
