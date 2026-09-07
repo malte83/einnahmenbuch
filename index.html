@@ -690,6 +690,58 @@ table.ledger tfoot td.amount{
   color:var(--ink-soft);
   font-style:italic;
 }
+
+.termin-date{
+  font-family:'Fraunces', serif;
+  font-weight:600;
+  font-size:1.1rem;
+  color:var(--teal-deep);
+  display:block;
+}
+.termin-past{opacity:0.62;}
+.termin-section-head{
+  font-size:0.72rem;
+  text-transform:uppercase;
+  letter-spacing:0.09em;
+  color:var(--ink-soft);
+  margin:22px 0 10px;
+}
+.termin-section-head:first-child{margin-top:0;}
+.termin-people{
+  border-top:1px dashed var(--line);
+  padding-top:10px;
+  margin-top:12px;
+}
+.termin-person{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  padding:5px 0;
+  font-size:0.92rem;
+  border-bottom:1px solid var(--line);
+}
+.termin-person:last-child{border-bottom:none;}
+.termin-person-card{
+  font-size:0.82rem;
+  color:var(--ink-soft);
+  white-space:nowrap;
+}
+.termin-person-card b{color:var(--teal-deep);}
+.termin-person-card.empty b{color:var(--rose);}
+.termin-person-card.none{font-style:italic;}
+.termin-add{
+  display:flex;
+  gap:8px;
+  flex-wrap:wrap;
+  align-items:center;
+  margin-top:12px;
+}
+.termin-add input[type=text]{
+  width:auto;
+  flex:1;
+  min-width:170px;
+}
 </style>
 </head>
 <body>
@@ -725,6 +777,7 @@ table.ledger tfoot td.amount{
     <button type="button" class="tab-btn" data-tab="expense">Ausgaben</button>
     <button type="button" class="tab-btn" data-tab="cards">Teilnehmerkarten</button>
     <button type="button" class="tab-btn" data-tab="customers">Kunden</button>
+    <button type="button" class="tab-btn" data-tab="calendar">Kalender</button>
     <button type="button" class="tab-btn" data-tab="eur">Übersicht (EÜR)</button>
   </div>
 
@@ -737,7 +790,7 @@ table.ledger tfoot td.amount{
     <button type="button" class="ghost-btn" id="backupExportBtn">Sicherung exportieren</button>
     <label class="ghost-btn" for="backupImportFile">Sicherung importieren</label>
     <input type="file" id="backupImportFile" accept="application/json" style="display:none;">
-    <span class="backup-note">Sichert Einnahmen, Ausgaben und Kunden gemeinsam in einer Datei. Speichere sie regelmäßig, damit nichts verloren geht. Ältere Einzel-Sicherungen können weiterhin importiert werden.</span>
+    <span class="backup-note">Sichert Einnahmen, Ausgaben, Kunden und Termine gemeinsam in einer Datei. Speichere sie regelmäßig, damit nichts verloren geht. Ältere Einzel-Sicherungen können weiterhin importiert werden.</span>
   </div>
 
   <section id="tab-income" class="tab-panel active">
@@ -906,6 +959,53 @@ table.ledger tfoot td.amount{
   </div>
   </section>
 
+  <section id="tab-calendar" class="tab-panel">
+  <div class="layout">
+
+    <div class="card">
+      <h2>Neuer Termin</h2>
+      <form id="terminForm">
+        <label for="t-date">Datum</label>
+        <input type="date" id="t-date" required>
+
+        <label for="t-time">Uhrzeit</label>
+        <input type="time" id="t-time">
+
+        <label>Kurs / Produkt</label>
+        <div class="dropdown" id="dd-termin-product">
+          <button type="button" class="dd-trigger" id="dd-termin-product-trigger">Bitte wählen</button>
+          <div class="dd-menu" id="dd-termin-product-menu"></div>
+        </div>
+
+        <label for="t-remark">Bemerkung</label>
+        <textarea id="t-remark" placeholder="optional"></textarea>
+
+        <div class="err" id="terminFormErr"></div>
+        <button type="submit" class="primary">Termin speichern</button>
+      </form>
+    </div>
+
+    <div>
+      <div class="filter-row" id="terminFilterRow"></div>
+
+      <div class="list-head">
+        <h2 style="font-family:'Fraunces',serif;font-weight:600;color:var(--teal-deep);">Termine</h2>
+        <span class="list-count" id="terminListCount"></span>
+      </div>
+
+      <p style="color:var(--ink-soft);font-size:0.84rem;margin:0 0 16px;font-style:italic;">
+        Trage bei jedem Termin die Teilnehmer ein. Hat die Person eine offene Karte für diesen Kurs,
+        wird die Teilnahme automatisch von der Karte abgebucht — beim Entfernen wird sie wieder gutgeschrieben.
+      </p>
+
+      <datalist id="teilnehmerVorschlaege"></datalist>
+
+      <div id="terminArea" class="loading">Lade Termine…</div>
+    </div>
+
+  </div>
+  </section>
+
   <section id="tab-eur" class="tab-panel">
     <h2 style="font-family:'Fraunces',serif;font-weight:600;color:var(--teal-deep);margin:0 0 4px;">Einnahmen-Überschuss-Rechnung</h2>
     <p style="color:var(--ink-soft);font-size:0.88rem;margin:0 0 18px;">Wähle ein Produkt, um Einnahmen, Ausgaben und den verbleibenden Überschuss dafür zu sehen.</p>
@@ -977,6 +1077,7 @@ const auth = getAuth(fbApp);
 const entriesDoc = doc(db, "einnahmenbuch", "einnahmen");
 const expensesDoc = doc(db, "einnahmenbuch", "ausgaben");
 const customersDoc = doc(db, "einnahmenbuch", "kunden");
+const termineDoc = doc(db, "einnahmenbuch", "termine");
 
 let cloudReady = false;
 let suppressSync = false;
@@ -1035,6 +1136,10 @@ const EXPENSE_STORAGE_KEY = "ausgaben-eintraege";
 let expenses = [];
 let activeExpenseFilter = "Alle";
 
+const TERMIN_STORAGE_KEY = "termine-eintraege";
+let termine = [];
+let activeTerminFilter = "Alle";
+
 const CUSTOMER_STORAGE_KEY = "kunden-eintraege";
 let customers = [];
 let custSearchTerm = "";
@@ -1074,6 +1179,7 @@ let selectedProduct = null;
 let selectedPayment = "Bar";
 let selectedExpenseProduct = null;
 let selectedCustomerProduct = null;
+let selectedTerminProduct = null;
 let editingEntryId = null;
 let editingExpenseId = null;
 
@@ -1304,6 +1410,7 @@ function cancelEditExpense(){
   editingExpenseId = null;
   document.getElementById('expenseForm').reset();
   document.getElementById('x-date').valueAsDate = new Date();
+document.getElementById('t-date').valueAsDate = new Date();
   selectedExpenseProduct = null;
   setDropdownValue('dd-exp-product', "");
   document.getElementById('dd-exp-product-trigger').textContent = "Bitte wählen";
@@ -1703,21 +1810,27 @@ function deleteExpense(id){
 }
 
 // Ermittelt die noch offenen Termine der Teilnehmerkarten einer Person.
-// Der Wert wird bewusst nicht im Kundendatensatz gespeichert, sondern immer
-// live aus den Einnahmen berechnet, damit er beim Eintragen einer Teilnahme
-// nicht veraltet. Mehrere Karten derselben Person werden zusammengezählt.
-function cardStatsFor(c){
-  const key = `${c.vorname || ""} ${c.nachname || ""}`.trim().toLowerCase();
+// Der Wert wird bewusst nirgends gespeichert, sondern immer live aus den
+// Einnahmen berechnet, damit er beim Eintragen einer Teilnahme nicht
+// veraltet. Mehrere Karten derselben Person werden zusammengezählt; mit
+// product wird auf die Karten eines bestimmten Kurses eingegrenzt.
+function cardStatsByName(name, product){
+  const key = (name || "").trim().toLowerCase();
   if(!key) return null;
   let total = 0, used = 0;
   entries.forEach(e => {
     if((e.count || 0) <= 0) return;
     if((e.name || "").trim().toLowerCase() !== key) return;
+    if(product && e.product !== product) return;
     total += e.count;
     used += e.attendance ? e.attendance.length : 0;
   });
   if(total === 0) return null;
   return {total, remaining: Math.max(0, total - used)};
+}
+
+function cardStatsFor(c){
+  return cardStatsByName(`${c.vorname || ""} ${c.nachname || ""}`.trim());
 }
 
 function renderCustomers(){
@@ -1894,6 +2007,278 @@ function cancelEditCustomer(){
   document.getElementById('custFormCancelBtn').style.display = "none";
   document.getElementById('custFormErr').textContent = "";
 }
+
+// ---- Kalender: Kurstermine und Teilnehmer ----
+
+function loadTermine(){
+  try{
+    const raw = localStorage.getItem(TERMIN_STORAGE_KEY);
+    termine = raw ? JSON.parse(raw) : [];
+  }catch(err){
+    termine = [];
+  }
+  if(migrateProductNames(termine)) saveTermine();
+  renderTerminFilters();
+  renderTermine();
+}
+
+function saveTermine(){
+  try{
+    localStorage.setItem(TERMIN_STORAGE_KEY, JSON.stringify(termine));
+  }catch(err){
+    document.getElementById('terminFormErr').textContent = "Speichern fehlgeschlagen — bitte erneut versuchen.";
+  }
+  pushTermine();
+}
+
+function pushTermine(){
+  if(!cloudReady || suppressSync) return;
+  setSyncStatus('syncing', 'Synchronisiere…');
+  setDoc(termineDoc, {data: JSON.stringify(termine)})
+    .then(() => setSyncStatus('ok', 'Alle Geräte aktuell'))
+    .catch(() => setSyncStatus('error', 'Nicht synchronisiert (offline?)'));
+}
+
+// Beim Löschen eines Termins werden die dafür abgebuchten Teilnahmen wieder
+// auf den Karten gutgeschrieben, damit keine Termine verloren gehen.
+function deleteTermin(id){
+  const t = termine.find(x => x.id === id);
+  if(!t) return;
+  const label = `${dateFmt(t.date)}${t.time ? ' ' + t.time : ''} · ${t.product}`;
+  if(!confirm(`Termin „${label}“ wirklich löschen?${(t.teilnehmer || []).length ? '\n\nAbgebuchte Teilnahmen werden den Karten wieder gutgeschrieben.' : ''}`)) return;
+
+  let cardsChanged = false;
+  (t.teilnehmer || []).forEach(p => {
+    if(refundCard(p, t.date)) cardsChanged = true;
+  });
+  termine = termine.filter(x => x.id !== id);
+  saveTermine();
+  if(cardsChanged){
+    saveEntries();
+    renderCards();
+    renderCustomers();
+  }
+  renderTermine();
+}
+
+// Bucht eine Teilnahme wieder von der Karte ab (Gutschrift).
+function refundCard(person, date){
+  if(!person || !person.karteId) return false;
+  const card = entries.find(e => e.id === person.karteId);
+  if(!card || !card.attendance) return false;
+  const idx = card.attendance.indexOf(date);
+  if(idx === -1) return false;
+  card.attendance.splice(idx, 1);
+  return true;
+}
+
+function renderTerminFilters(){
+  const row = document.getElementById('terminFilterRow');
+  if(!row) return;
+  const all = ["Alle", ...PRODUCTS];
+  row.innerHTML = all.map(p => {
+    const dot = p === "Alle" ? "" : `<span class="dot" style="background:${PRODUCT_COLORS[p]}"></span>`;
+    return `<button class="chip ${activeTerminFilter===p?'active':''}" data-p="${p}">${dot}${p}</button>`;
+  }).join('');
+  row.querySelectorAll('.chip').forEach(btn => {
+    btn.addEventListener('click', () => {
+      activeTerminFilter = btn.dataset.p;
+      renderTerminFilters();
+      renderTermine();
+    });
+  });
+}
+
+// Vorschlagsliste für das Teilnehmerfeld: alle Kunden plus alle Namen, die
+// schon in den Einnahmen vorkommen.
+function renderTeilnehmerVorschlaege(){
+  const list = document.getElementById('teilnehmerVorschlaege');
+  if(!list) return;
+  const namen = new Set();
+  customers.forEach(c => {
+    const n = `${c.vorname || ""} ${c.nachname || ""}`.trim();
+    if(n) namen.add(n);
+  });
+  entries.forEach(e => {
+    const n = (e.name || "").trim();
+    if(n) namen.add(n);
+  });
+  list.innerHTML = [...namen].sort((a,b) => a.localeCompare(b, 'de'))
+    .map(n => `<option value="${escapeHtml(n)}"></option>`).join('');
+}
+
+function renderTermine(){
+  const area = document.getElementById('terminArea');
+  if(!area) return;
+
+  renderTeilnehmerVorschlaege();
+
+  const filtered = termine.filter(t => activeTerminFilter === "Alle" || t.product === activeTerminFilter);
+
+  document.getElementById('terminListCount').textContent =
+    filtered.length === 1 ? "1 Termin" : `${filtered.length} Termine`;
+
+  if(filtered.length === 0){
+    area.innerHTML = `<div class="empty">Noch keine Termine${activeTerminFilter!=="Alle" ? " für „"+activeTerminFilter+"“" : ""}.</div>`;
+    return;
+  }
+
+  const heute = new Date().toISOString().slice(0,10);
+  const sortKey = t => `${t.date} ${t.time || ""}`;
+  const kommende = filtered.filter(t => t.date >= heute).sort((a,b) => sortKey(a).localeCompare(sortKey(b)));
+  const vergangene = filtered.filter(t => t.date < heute).sort((a,b) => sortKey(b).localeCompare(sortKey(a)));
+
+  const cardHtml = (t, past) => {
+    const people = t.teilnehmer || [];
+    const peopleHtml = people.length === 0
+      ? `<span class="ptcard-empty-dates">Noch keine Teilnehmer eingetragen.</span>`
+      : people.map((p, i) => {
+          const st = cardStatsByName(p.name, t.product);
+          const karte = st
+            ? `<span class="termin-person-card ${st.remaining === 0 ? 'empty' : ''}">Karte: <b>${st.remaining}</b> / ${st.total} übrig</span>`
+            : `<span class="termin-person-card none">keine Karte</span>`;
+          return `
+            <div class="termin-person">
+              <span>${escapeHtml(p.name)}</span>
+              <span>
+                ${karte}
+                <button class="ptcard-date-del" data-termin="${t.id}" data-index="${i}" title="Teilnehmer entfernen">×</button>
+              </span>
+            </div>`;
+        }).join('');
+
+    return `
+      <div class="ptcard ${past ? 'termin-past' : ''}" style="border-left-color:${PRODUCT_COLORS[t.product] || '#2F5D50'}">
+        <div class="ptcard-head">
+          <div>
+            <span class="termin-date">${dateFmt(t.date)}${t.time ? ' · ' + escapeHtml(t.time) + ' Uhr' : ''}</span>
+            <span class="ptcard-product">${escapeHtml(t.product)}${t.remark ? ' · ' + escapeHtml(t.remark) : ''}</span>
+          </div>
+          <div class="ptcard-count">
+            <span class="remaining">${people.length}</span> ${people.length === 1 ? 'Teilnehmer' : 'Teilnehmer'}
+            <br><button class="del-btn" data-del-termin="${t.id}">Termin löschen</button>
+          </div>
+        </div>
+        <div class="termin-people">${peopleHtml}</div>
+        <div class="termin-add">
+          <input type="text" list="teilnehmerVorschlaege" placeholder="Teilnehmer hinzufügen…" id="teilnehmer-input-${t.id}">
+          <button class="ptcard-add-btn" data-add-termin="${t.id}">Teilnehmer eintragen</button>
+        </div>
+      </div>`;
+  };
+
+  area.innerHTML =
+    (kommende.length ? `<div class="termin-section-head">Kommende Termine</div>` + kommende.map(t => cardHtml(t, false)).join('') : '') +
+    (vergangene.length ? `<div class="termin-section-head">Vergangene Termine</div>` + vergangene.map(t => cardHtml(t, true)).join('') : '');
+}
+
+// Trägt einen Teilnehmer ein und bucht — falls vorhanden — eine offene Karte
+// für diesen Kurs ab. Die Karten-id wird am Teilnehmer vermerkt, damit die
+// Teilnahme beim Entfernen gezielt wieder gutgeschrieben werden kann.
+function addTeilnehmer(terminId){
+  const t = termine.find(x => x.id === terminId);
+  if(!t) return;
+  const input = document.getElementById('teilnehmer-input-' + terminId);
+  const name = (input ? input.value : "").trim();
+  if(!name){
+    alert("Bitte zuerst einen Namen eingeben.");
+    return;
+  }
+  if(!t.teilnehmer) t.teilnehmer = [];
+  if(t.teilnehmer.some(p => (p.name || "").trim().toLowerCase() === name.toLowerCase())){
+    alert(`${name} ist bei diesem Termin bereits eingetragen.`);
+    return;
+  }
+
+  const card = findOpenCard(name, t.product);
+  if(card){
+    if(!card.attendance) card.attendance = [];
+    card.attendance.push(t.date);
+  }
+  t.teilnehmer.push({name, karteId: card ? card.id : null});
+
+  saveTermine();
+  if(card){
+    saveEntries();
+    renderCards();
+    renderCustomers();
+  }
+  renderTermine();
+
+  if(card){
+    const remaining = (card.count || 0) - card.attendance.length;
+    if(remaining === 0){
+      alert(`${name} hat jetzt keine Termine mehr auf der Karte für „${t.product}“.`);
+    } else if(remaining === 1){
+      alert(`${name} hat für „${t.product}“ nur noch 1 Termin übrig!`);
+    }
+  }
+}
+
+function removeTeilnehmer(terminId, index){
+  const t = termine.find(x => x.id === terminId);
+  if(!t || !t.teilnehmer) return;
+  const person = t.teilnehmer[index];
+  if(!person) return;
+
+  const refunded = refundCard(person, t.date);
+  t.teilnehmer.splice(index, 1);
+
+  saveTermine();
+  if(refunded){
+    saveEntries();
+    renderCards();
+    renderCustomers();
+  }
+  renderTermine();
+}
+
+document.getElementById('terminArea').addEventListener('click', (ev) => {
+  const addId = ev.target.dataset ? ev.target.dataset.addTermin : null;
+  if(addId){ addTeilnehmer(addId); return; }
+
+  const delId = ev.target.dataset ? ev.target.dataset.delTermin : null;
+  if(delId){ deleteTermin(delId); return; }
+
+  if(ev.target.classList.contains('ptcard-date-del') && ev.target.dataset.termin){
+    removeTeilnehmer(ev.target.dataset.termin, parseInt(ev.target.dataset.index, 10));
+  }
+});
+
+document.getElementById('terminArea').addEventListener('keydown', (ev) => {
+  if(ev.key === 'Enter' && ev.target.id && ev.target.id.startsWith('teilnehmer-input-')){
+    ev.preventDefault();
+    addTeilnehmer(ev.target.id.replace('teilnehmer-input-', ''));
+  }
+});
+
+document.getElementById('terminForm').addEventListener('submit', (ev) => {
+  ev.preventDefault();
+  const errEl = document.getElementById('terminFormErr');
+  errEl.textContent = "";
+
+  const date = document.getElementById('t-date').value;
+  const time = document.getElementById('t-time').value;
+  const product = selectedTerminProduct;
+  const remark = document.getElementById('t-remark').value.trim();
+
+  if(!date || !product){
+    errEl.textContent = "Bitte Datum und Kurs ausfüllen.";
+    return;
+  }
+
+  termine.push({
+    id: Date.now().toString(36) + Math.random().toString(36).slice(2,7),
+    date, time, product, remark, teilnehmer: []
+  });
+
+  ev.target.reset();
+  document.getElementById('t-date').value = date;
+  selectedTerminProduct = null;
+  setDropdownValue('dd-termin-product', "Bitte wählen");
+  renderTermine();
+  saveTermine();
+});
 
 // Prüft, ob heute (Tag/Monat, unabhängig vom Geburtsjahr) ein Kunde
 // Geburtstag hat, und zeigt ggf. eine Erinnerung als Popup. Da diese Prüfung
@@ -2144,10 +2529,12 @@ setupDropdown('dd-pay', ["Bar", "PayPal", "Überweisung", "Digistore"], false, v
 document.querySelector('#dd-pay-menu .dd-option[data-v="Bar"]').classList.add('selected');
 setupDropdown('dd-exp-product', PRODUCTS, true, v => selectedExpenseProduct = v);
 setupDropdown('dd-cust-product', PRODUCTS, true, v => selectedCustomerProduct = v);
+setupDropdown('dd-termin-product', PRODUCTS, true, v => selectedTerminProduct = v);
 
 loadEntries();
 loadExpenses();
 loadCustomers();
+loadTermine();
 checkBirthdaysToday();
 renderCardFilters();
 renderCards();
@@ -2177,6 +2564,9 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
       renderCards();
     } else if(btn.dataset.tab === 'customers'){
       renderCustomers();
+    } else if(btn.dataset.tab === 'calendar'){
+      renderTerminFilters();
+      renderTermine();
     } else {
       renderEur();
     }
@@ -2193,7 +2583,8 @@ document.getElementById('backupExportBtn').addEventListener('click', () => {
     exportiertAm: today,
     einnahmen: entries,
     ausgaben: expenses,
-    kunden: customers
+    kunden: customers,
+    termine: termine
   };
   const blob = new Blob([JSON.stringify(backup, null, 2)], {type: 'application/json'});
   const url = URL.createObjectURL(blob);
@@ -2251,10 +2642,10 @@ document.getElementById('backupImportFile').addEventListener('change', (ev) => {
       if(Array.isArray(imported)){
         data = splitLegacyBackup(imported);
       } else if(imported && typeof imported === 'object'){
-        if(!Array.isArray(imported.einnahmen) && !Array.isArray(imported.ausgaben) && !Array.isArray(imported.kunden)){
+        if(!Array.isArray(imported.einnahmen) && !Array.isArray(imported.ausgaben) && !Array.isArray(imported.kunden) && !Array.isArray(imported.termine)){
           throw new Error("ungültiges Format");
         }
-        data = {einnahmen: imported.einnahmen, ausgaben: imported.ausgaben, kunden: imported.kunden};
+        data = {einnahmen: imported.einnahmen, ausgaben: imported.ausgaben, kunden: imported.kunden, termine: imported.termine};
       } else {
         throw new Error("ungültiges Format");
       }
@@ -2262,6 +2653,7 @@ document.getElementById('backupImportFile').addEventListener('change', (ev) => {
       const addedIncome = mergeById(entries, data.einnahmen);
       const addedExpense = mergeById(expenses, data.ausgaben);
       const addedCustomers = mergeById(customers, data.kunden);
+      const addedTermine = mergeById(termine, data.termine);
 
       if(addedIncome){
         migrateProductNames(entries);
@@ -2280,9 +2672,15 @@ document.getElementById('backupImportFile').addEventListener('change', (ev) => {
         saveCustomers();
         renderCustomers();
       }
+      if(addedTermine){
+        migrateProductNames(termine);
+        saveTermine();
+        renderTerminFilters();
+        renderTermine();
+      }
 
-      alert((addedIncome + addedExpense + addedCustomers) > 0
-        ? `Aus der Sicherung übernommen:\n${addedIncome} Einnahmen\n${addedExpense} Ausgaben\n${addedCustomers} Kunden`
+      alert((addedIncome + addedExpense + addedCustomers + addedTermine) > 0
+        ? `Aus der Sicherung übernommen:\n${addedIncome} Einnahmen\n${addedExpense} Ausgaben\n${addedCustomers} Kunden\n${addedTermine} Termine`
         : "Keine neuen Daten gefunden — die Sicherung war bereits vollständig vorhanden.");
     }catch(err){
       alert("Diese Datei konnte nicht gelesen werden. Bitte eine gültige Sicherungsdatei wählen.");
@@ -2356,9 +2754,10 @@ setSyncStatus('syncing', 'Verbinde…');
 let entriesLoaded = false;
 let expensesLoaded = false;
 let customersLoaded = false;
+let termineLoaded = false;
 
 function finishInitialLoad(){
-  if(entriesLoaded && expensesLoaded && customersLoaded && !cloudReady){
+  if(entriesLoaded && expensesLoaded && customersLoaded && termineLoaded && !cloudReady){
     cloudReady = true;
     setSyncStatus('ok', 'Alle Geräte aktuell');
   }
@@ -2433,6 +2832,30 @@ onSnapshot(customersDoc, (snap) => {
 }, () => {
   setSyncStatus('error', 'Keine Verbindung — lokal gespeichert');
   customersLoaded = true;
+  finishInitialLoad();
+});
+
+onSnapshot(termineDoc, (snap) => {
+  if(snap.exists() && snap.data().data){
+    try{
+      const remote = JSON.parse(snap.data().data);
+      if(Array.isArray(remote)){
+        suppressSync = true;
+        termine = remote;
+        const changed = migrateProductNames(termine);
+        localStorage.setItem(TERMIN_STORAGE_KEY, JSON.stringify(termine));
+        renderTerminFilters();
+        renderTermine();
+        suppressSync = false;
+        if(changed) pushTermine();
+      }
+    }catch(e){}
+  }
+  termineLoaded = true;
+  finishInitialLoad();
+}, () => {
+  setSyncStatus('error', 'Keine Verbindung — lokal gespeichert');
+  termineLoaded = true;
   finishInitialLoad();
 });
 }
