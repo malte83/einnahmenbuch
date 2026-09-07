@@ -730,6 +730,7 @@ table.ledger tfoot td.amount{
 .termin-person-card b{color:var(--teal-deep);}
 .termin-person-card.empty b{color:var(--rose);}
 .termin-person-card.none{font-style:italic;}
+.termin-person-card.pending, .termin-person-card.pending b{color:var(--ochre);}
 .termin-add{
   display:flex;
   gap:8px;
@@ -994,8 +995,9 @@ table.ledger tfoot td.amount{
       </div>
 
       <p style="color:var(--ink-soft);font-size:0.84rem;margin:0 0 16px;font-style:italic;">
-        Trage bei jedem Termin die Teilnehmer ein. Hat die Person eine offene Karte für diesen Kurs,
-        wird die Teilnahme automatisch von der Karte abgebucht — beim Entfernen wird sie wieder gutgeschrieben.
+        Trage bei jedem Termin die Teilnehmer ein. Für künftige Termine sind sie zunächst nur vorgemerkt —
+        von der Karte abgebucht wird erst am Kurstag. Entfernst du einen Teilnehmer oder den Termin, wird eine
+        bereits erfolgte Abbuchung wieder gutgeschrieben.
       </p>
 
       <datalist id="teilnehmerVorschlaege"></datalist>
@@ -2045,7 +2047,8 @@ function deleteTermin(id){
   const t = termine.find(x => x.id === id);
   if(!t) return;
   const label = `${dateFmt(t.date)}${t.time ? ' ' + t.time : ''} · ${t.product}`;
-  if(!confirm(`Termin „${label}“ wirklich löschen?${(t.teilnehmer || []).length ? '\n\nAbgebuchte Teilnahmen werden den Karten wieder gutgeschrieben.' : ''}`)) return;
+  const hatBuchungen = (t.teilnehmer || []).some(p => p && p.karteId);
+  if(!confirm(`Termin „${label}“ wirklich löschen?${hatBuchungen ? '\n\nAbgebuchte Teilnahmen werden den Karten wieder gutgeschrieben.' : ''}`)) return;
 
   let cardsChanged = false;
   (t.teilnehmer || []).forEach(p => {
@@ -2059,6 +2062,37 @@ function deleteTermin(id){
     renderCustomers();
   }
   renderTermine();
+}
+
+// Teilnehmer künftiger Termine sind zunächst nur vorgemerkt (ohne karteId).
+// Sobald der Kurstag erreicht ist, wird die Teilnahme auf einer offenen Karte
+// abgebucht. Diese Funktion zieht alle fälligen Buchungen nach und wird beim
+// Laden sowie nach jedem Cloud-Abgleich aufgerufen.
+function applyDueBookings(){
+  const heute = new Date().toISOString().slice(0,10);
+  let changed = false;
+
+  termine.forEach(t => {
+    if(!t.date || t.date > heute) return;
+    (t.teilnehmer || []).forEach(p => {
+      if(!p || p.karteId) return;
+      const card = findOpenCard(p.name, t.product);
+      if(!card) return;
+      if(!card.attendance) card.attendance = [];
+      card.attendance.push(t.date);
+      p.karteId = card.id;
+      changed = true;
+    });
+  });
+
+  if(changed){
+    saveEntries();
+    saveTermine();
+    renderCards();
+    renderCustomers();
+    renderTermine();
+  }
+  return changed;
 }
 
 // Bucht eine Teilnahme wieder von der Karte ab (Gutschrift).
@@ -2134,9 +2168,14 @@ function renderTermine(){
       ? `<span class="ptcard-empty-dates">Noch keine Teilnehmer eingetragen.</span>`
       : people.map((p, i) => {
           const st = cardStatsByName(p.name, t.product);
-          const karte = st
-            ? `<span class="termin-person-card ${st.remaining === 0 ? 'empty' : ''}">Karte: <b>${st.remaining}</b> / ${st.total} übrig</span>`
-            : `<span class="termin-person-card none">keine Karte</span>`;
+          let karte;
+          if(!st){
+            karte = `<span class="termin-person-card none">keine Karte</span>`;
+          } else if(p.karteId){
+            karte = `<span class="termin-person-card ${st.remaining === 0 ? 'empty' : ''}">Karte: <b>${st.remaining}</b> / ${st.total} übrig</span>`;
+          } else {
+            karte = `<span class="termin-person-card pending">vorgemerkt · Karte: <b>${st.remaining}</b> / ${st.total} übrig</span>`;
+          }
           return `
             <div class="termin-person">
               <span>${escapeHtml(p.name)}</span>
@@ -2172,9 +2211,11 @@ function renderTermine(){
     (vergangene.length ? `<div class="termin-section-head">Vergangene Termine</div>` + vergangene.map(t => cardHtml(t, true)).join('') : '');
 }
 
-// Trägt einen Teilnehmer ein und bucht — falls vorhanden — eine offene Karte
-// für diesen Kurs ab. Die Karten-id wird am Teilnehmer vermerkt, damit die
-// Teilnahme beim Entfernen gezielt wieder gutgeschrieben werden kann.
+// Trägt einen Teilnehmer ein. Liegt der Termin heute oder in der
+// Vergangenheit, wird sofort von einer offenen Karte abgebucht; bei künftigen
+// Terminen bleibt es zunächst eine Vormerkung. Die Karten-id wird am
+// Teilnehmer vermerkt, damit die Teilnahme beim Entfernen gezielt wieder
+// gutgeschrieben werden kann.
 function addTeilnehmer(terminId){
   const t = termine.find(x => x.id === terminId);
   if(!t) return;
@@ -2190,7 +2231,8 @@ function addTeilnehmer(terminId){
     return;
   }
 
-  const card = findOpenCard(name, t.product);
+  const heute = new Date().toISOString().slice(0,10);
+  const card = t.date <= heute ? findOpenCard(name, t.product) : null;
   if(card){
     if(!card.attendance) card.attendance = [];
     card.attendance.push(t.date);
@@ -2535,6 +2577,7 @@ loadEntries();
 loadExpenses();
 loadCustomers();
 loadTermine();
+applyDueBookings();
 checkBirthdaysToday();
 renderCardFilters();
 renderCards();
@@ -2760,6 +2803,9 @@ function finishInitialLoad(){
   if(entriesLoaded && expensesLoaded && customersLoaded && termineLoaded && !cloudReady){
     cloudReady = true;
     setSyncStatus('ok', 'Alle Geräte aktuell');
+    // Erst jetzt stehen die Cloud-Daten vollständig zur Verfügung, deshalb
+    // werden fällige Buchungen hier noch einmal nachgezogen.
+    applyDueBookings();
   }
 }
 
@@ -2848,6 +2894,7 @@ onSnapshot(termineDoc, (snap) => {
         renderTermine();
         suppressSync = false;
         if(changed) pushTermine();
+        if(cloudReady) applyDueBookings();
       }
     }catch(e){}
   }
