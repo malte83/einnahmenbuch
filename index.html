@@ -743,6 +743,94 @@ table.ledger tfoot td.amount{
   flex:1;
   min-width:170px;
 }
+
+.modal-overlay{
+  position:fixed;
+  inset:0;
+  background:rgba(31,42,36,0.45);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:20px;
+  z-index:200;
+}
+.modal-box{
+  background:var(--paper-raised);
+  border:1px solid var(--line);
+  border-radius:5px;
+  padding:24px;
+  width:100%;
+  max-width:460px;
+  max-height:88vh;
+  display:flex;
+  flex-direction:column;
+}
+.modal-box h2{
+  font-family:'Fraunces', serif;
+  font-size:1.2rem;
+  font-weight:600;
+  color:var(--teal-deep);
+  margin:0 0 2px;
+}
+.modal-sub{
+  color:var(--ink-soft);
+  font-size:0.85rem;
+  margin:0 0 16px;
+}
+.modal-list{
+  overflow-y:auto;
+  border:1px solid var(--line);
+  border-radius:3px;
+  margin-top:10px;
+  flex:1;
+  min-height:120px;
+}
+/* überschreibt das globale label-Styling (Großbuchstaben, Abstände) */
+.modal-person{
+  display:flex;
+  align-items:center;
+  gap:11px;
+  padding:11px 13px;
+  margin:0;
+  border-bottom:1px solid var(--line);
+  cursor:pointer;
+  font-size:0.95rem;
+  text-transform:none;
+  letter-spacing:normal;
+  color:var(--ink);
+}
+.modal-person:last-child{border-bottom:none;}
+.modal-person:hover{background:var(--good-bg);}
+.modal-person input[type=checkbox]{
+  width:19px;
+  height:19px;
+  flex:none;
+  accent-color:var(--teal-deep);
+  cursor:pointer;
+}
+.modal-person-name{flex:1;}
+.modal-person .termin-person-card{font-size:0.8rem;}
+.modal-empty{
+  padding:22px 14px;
+  text-align:center;
+  color:var(--ink-soft);
+  font-style:italic;
+  font-size:0.9rem;
+}
+.modal-add{
+  display:flex;
+  gap:8px;
+  margin-top:12px;
+}
+.modal-add input[type=text]{flex:1;}
+.modal-actions{
+  display:flex;
+  gap:10px;
+  margin-top:16px;
+}
+.modal-actions button{margin-top:0;}
+.modal-actions .cancel-edit{flex:1;}
+.modal-actions .primary{flex:1;}
 </style>
 </head>
 <body>
@@ -1000,13 +1088,32 @@ table.ledger tfoot td.amount{
         bereits erfolgte Abbuchung wieder gutgeschrieben.
       </p>
 
-      <datalist id="teilnehmerVorschlaege"></datalist>
-
       <div id="terminArea" class="loading">Lade Termine…</div>
     </div>
 
   </div>
   </section>
+
+  <div id="teilnehmerModal" class="modal-overlay" style="display:none;">
+    <div class="modal-box">
+      <h2>Teilnehmer auswählen</h2>
+      <p class="modal-sub" id="modalSub"></p>
+
+      <input type="text" id="modalSearch" placeholder="Name suchen…">
+
+      <div class="modal-list" id="modalList"></div>
+
+      <div class="modal-add">
+        <input type="text" id="modalNewName" placeholder="Andere Person eintragen…">
+        <button type="button" class="ghost-btn" id="modalAddNew">Hinzufügen</button>
+      </div>
+
+      <div class="modal-actions">
+        <button type="button" class="cancel-edit" id="modalCancel">Abbrechen</button>
+        <button type="button" class="primary" id="modalSave">Übernehmen</button>
+      </div>
+    </div>
+  </div>
 
   <section id="tab-eur" class="tab-panel">
     <h2 style="font-family:'Fraunces',serif;font-weight:600;color:var(--teal-deep);margin:0 0 4px;">Einnahmen-Überschuss-Rechnung</h2>
@@ -2128,29 +2235,9 @@ function renderTerminFilters(){
   });
 }
 
-// Vorschlagsliste für das Teilnehmerfeld: alle Kunden plus alle Namen, die
-// schon in den Einnahmen vorkommen.
-function renderTeilnehmerVorschlaege(){
-  const list = document.getElementById('teilnehmerVorschlaege');
-  if(!list) return;
-  const namen = new Set();
-  customers.forEach(c => {
-    const n = `${c.vorname || ""} ${c.nachname || ""}`.trim();
-    if(n) namen.add(n);
-  });
-  entries.forEach(e => {
-    const n = (e.name || "").trim();
-    if(n) namen.add(n);
-  });
-  list.innerHTML = [...namen].sort((a,b) => a.localeCompare(b, 'de'))
-    .map(n => `<option value="${escapeHtml(n)}"></option>`).join('');
-}
-
 function renderTermine(){
   const area = document.getElementById('terminArea');
   if(!area) return;
-
-  renderTeilnehmerVorschlaege();
 
   const filtered = termine.filter(t => activeTerminFilter === "Alle" || t.product === activeTerminFilter);
 
@@ -2205,8 +2292,7 @@ function renderTermine(){
         </div>
         <div class="termin-people">${peopleHtml}</div>
         <div class="termin-add">
-          <input type="text" list="teilnehmerVorschlaege" placeholder="Teilnehmer hinzufügen…" id="teilnehmer-input-${t.id}">
-          <button class="ptcard-add-btn" data-add-termin="${t.id}">Teilnehmer eintragen</button>
+          <button class="ptcard-add-btn" data-add-termin="${t.id}">Teilnehmer auswählen</button>
         </div>
       </div>`;
   };
@@ -2216,51 +2302,187 @@ function renderTermine(){
     (vergangene.length ? `<div class="termin-section-head">Vergangene Termine</div>` + vergangene.map(t => cardHtml(t, true)).join('') : '');
 }
 
-// Trägt einen Teilnehmer ein. Liegt der Termin heute oder in der
-// Vergangenheit, wird sofort von einer offenen Karte abgebucht; bei künftigen
-// Terminen bleibt es zunächst eine Vormerkung. Die Karten-id wird am
-// Teilnehmer vermerkt, damit die Teilnahme beim Entfernen gezielt wieder
-// gutgeschrieben werden kann.
-function addTeilnehmer(terminId){
+// ---- Auswahlfenster für Teilnehmer ----
+// Statt einzeln einzutippen werden alle bekannten Personen mit Häkchen
+// angeboten. Beim Übernehmen wird die Teilnehmerliste des Termins auf die
+// Auswahl gebracht: neu Angehakte kommen dazu (und werden bei fälligen
+// Terminen abgebucht), Abgewählte fliegen raus und bekommen eine bereits
+// erfolgte Abbuchung gutgeschrieben.
+let modalTerminId = null;
+let modalSelection = new Map();   // key: name in Kleinschreibung -> Originalname
+let modalNames = [];              // angebotene Personen
+let modalSearchTerm = "";
+
+// Alle bekannten Personen: Kunden plus Namen aus den Einnahmen.
+function alleBekanntenPersonen(){
+  const namen = new Map();
+  customers.forEach(c => {
+    const n = `${c.vorname || ""} ${c.nachname || ""}`.trim();
+    if(n) namen.set(n.toLowerCase(), n);
+  });
+  entries.forEach(e => {
+    const n = (e.name || "").trim();
+    if(n && !namen.has(n.toLowerCase())) namen.set(n.toLowerCase(), n);
+  });
+  return [...namen.values()].sort((a,b) => a.localeCompare(b, 'de'));
+}
+
+function openTeilnehmerModal(terminId){
   const t = termine.find(x => x.id === terminId);
   if(!t) return;
-  const input = document.getElementById('teilnehmer-input-' + terminId);
-  const name = (input ? input.value : "").trim();
-  if(!name){
-    alert("Bitte zuerst einen Namen eingeben.");
+
+  modalTerminId = terminId;
+  modalSelection = new Map();
+  (t.teilnehmer || []).forEach(p => {
+    const n = (p.name || "").trim();
+    if(n) modalSelection.set(n.toLowerCase(), n);
+  });
+
+  modalNames = alleBekanntenPersonen();
+  modalSelection.forEach((name, key) => {
+    if(!modalNames.some(n => n.toLowerCase() === key)) modalNames.push(name);
+  });
+  modalNames.sort((a,b) => a.localeCompare(b, 'de'));
+
+  modalSearchTerm = "";
+  document.getElementById('modalSearch').value = "";
+  document.getElementById('modalNewName').value = "";
+  document.getElementById('modalSub').textContent =
+    `${dateFmt(t.date)}${t.time ? ' · ' + t.time + ' Uhr' : ''} · ${t.product}`;
+  document.getElementById('teilnehmerModal').style.display = 'flex';
+  renderModalList();
+}
+
+function closeTeilnehmerModal(){
+  document.getElementById('teilnehmerModal').style.display = 'none';
+  modalTerminId = null;
+}
+
+function renderModalList(){
+  const t = termine.find(x => x.id === modalTerminId);
+  const list = document.getElementById('modalList');
+  if(!t || !list) return;
+
+  const term = modalSearchTerm.trim().toLowerCase();
+  const sichtbar = modalNames.filter(n => !term || n.toLowerCase().includes(term));
+
+  if(sichtbar.length === 0){
+    list.innerHTML = `<div class="modal-empty">${modalNames.length === 0
+      ? "Noch keine Personen vorhanden — trage unten jemanden ein."
+      : "Keine Treffer für diese Suche."}</div>`;
     return;
   }
+
+  list.innerHTML = sichtbar.map(n => {
+    const key = n.toLowerCase();
+    const st = cardStatsByName(n, t.product, t.date);
+    const karte = st
+      ? `<span class="termin-person-card ${st.remaining === 0 ? 'empty' : ''}"><b>${st.remaining}</b> / ${st.total}</span>`
+      : `<span class="termin-person-card none">keine Karte</span>`;
+    return `
+      <label class="modal-person">
+        <input type="checkbox" data-name="${escapeHtml(n)}" ${modalSelection.has(key) ? 'checked' : ''}>
+        <span class="modal-person-name">${escapeHtml(n)}</span>
+        ${karte}
+      </label>`;
+  }).join('');
+
+  list.querySelectorAll('input[type=checkbox]').forEach(box => {
+    box.addEventListener('change', () => {
+      const name = box.dataset.name;
+      const key = name.toLowerCase();
+      if(box.checked) modalSelection.set(key, name);
+      else modalSelection.delete(key);
+    });
+  });
+}
+
+// Übernimmt die Auswahl auf den Termin.
+function saveTeilnehmerModal(){
+  const t = termine.find(x => x.id === modalTerminId);
+  if(!t) return;
   if(!t.teilnehmer) t.teilnehmer = [];
-  if(t.teilnehmer.some(p => (p.name || "").trim().toLowerCase() === name.toLowerCase())){
-    alert(`${name} ist bei diesem Termin bereits eingetragen.`);
-    return;
-  }
 
   const heute = new Date().toISOString().slice(0,10);
-  const card = t.date <= heute ? findOpenCard(name, t.product, t.date) : null;
-  if(card){
-    if(!card.attendance) card.attendance = [];
-    card.attendance.push(t.date);
-  }
-  t.teilnehmer.push({name, karteId: card ? card.id : null});
+  let cardsChanged = false;
+  const behalten = [];
 
+  t.teilnehmer.forEach(p => {
+    const key = (p.name || "").trim().toLowerCase();
+    if(modalSelection.has(key)){
+      behalten.push(p);
+    } else if(refundCard(p, t.date)){
+      cardsChanged = true;
+    }
+  });
+
+  const vorhanden = new Set(behalten.map(p => (p.name || "").trim().toLowerCase()));
+  const leer = [];
+  const fastLeer = [];
+
+  modalSelection.forEach((name, key) => {
+    if(vorhanden.has(key)) return;
+    const card = t.date <= heute ? findOpenCard(name, t.product, t.date) : null;
+    if(card){
+      if(!card.attendance) card.attendance = [];
+      card.attendance.push(t.date);
+      cardsChanged = true;
+      const remaining = (card.count || 0) - card.attendance.length;
+      if(remaining === 0) leer.push(name);
+      else if(remaining === 1) fastLeer.push(name);
+    }
+    behalten.push({name, karteId: card ? card.id : null});
+  });
+
+  t.teilnehmer = behalten;
   saveTermine();
-  if(card){
+  if(cardsChanged){
     saveEntries();
     renderCards();
     renderCustomers();
   }
+  closeTeilnehmerModal();
   renderTermine();
 
-  if(card){
-    const remaining = (card.count || 0) - card.attendance.length;
-    if(remaining === 0){
-      alert(`${name} hat jetzt keine Termine mehr auf der Karte für „${t.product}“.`);
-    } else if(remaining === 1){
-      alert(`${name} hat für „${t.product}“ nur noch 1 Termin übrig!`);
-    }
-  }
+  const hinweise = [];
+  if(fastLeer.length) hinweise.push(`Nur noch 1 Termin übrig: ${fastLeer.join(', ')}`);
+  if(leer.length) hinweise.push(`Karte jetzt aufgebraucht: ${leer.join(', ')}`);
+  if(hinweise.length) alert(hinweise.join('\n'));
 }
+
+document.getElementById('modalSearch').addEventListener('input', (ev) => {
+  modalSearchTerm = ev.target.value;
+  renderModalList();
+});
+
+document.getElementById('modalAddNew').addEventListener('click', () => {
+  const input = document.getElementById('modalNewName');
+  const name = input.value.trim();
+  if(!name) return;
+  const key = name.toLowerCase();
+  if(!modalNames.some(n => n.toLowerCase() === key)){
+    modalNames.push(name);
+    modalNames.sort((a,b) => a.localeCompare(b, 'de'));
+  }
+  modalSelection.set(key, name);
+  input.value = "";
+  modalSearchTerm = "";
+  document.getElementById('modalSearch').value = "";
+  renderModalList();
+});
+
+document.getElementById('modalNewName').addEventListener('keydown', (ev) => {
+  if(ev.key === 'Enter'){
+    ev.preventDefault();
+    document.getElementById('modalAddNew').click();
+  }
+});
+
+document.getElementById('modalCancel').addEventListener('click', closeTeilnehmerModal);
+document.getElementById('modalSave').addEventListener('click', saveTeilnehmerModal);
+document.getElementById('teilnehmerModal').addEventListener('click', (ev) => {
+  if(ev.target.id === 'teilnehmerModal') closeTeilnehmerModal();
+});
 
 function removeTeilnehmer(terminId, index){
   const t = termine.find(x => x.id === terminId);
@@ -2282,20 +2504,13 @@ function removeTeilnehmer(terminId, index){
 
 document.getElementById('terminArea').addEventListener('click', (ev) => {
   const addId = ev.target.dataset ? ev.target.dataset.addTermin : null;
-  if(addId){ addTeilnehmer(addId); return; }
+  if(addId){ openTeilnehmerModal(addId); return; }
 
   const delId = ev.target.dataset ? ev.target.dataset.delTermin : null;
   if(delId){ deleteTermin(delId); return; }
 
   if(ev.target.classList.contains('ptcard-date-del') && ev.target.dataset.termin){
     removeTeilnehmer(ev.target.dataset.termin, parseInt(ev.target.dataset.index, 10));
-  }
-});
-
-document.getElementById('terminArea').addEventListener('keydown', (ev) => {
-  if(ev.key === 'Enter' && ev.target.id && ev.target.id.startsWith('teilnehmer-input-')){
-    ev.preventDefault();
-    addTeilnehmer(ev.target.id.replace('teilnehmer-input-', ''));
   }
 });
 
