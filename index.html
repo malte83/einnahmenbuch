@@ -895,6 +895,10 @@ table.ledger tfoot td.amount{
         <span class="list-count" id="custListCount"></span>
       </div>
 
+      <div class="backup-row">
+        <button type="button" class="ghost-btn" id="custFromCardsBtn">Kunden aus Teilnehmerkarten übernehmen</button>
+        <span class="backup-note">Legt für alle Personen mit einer Mehrfachkarte einen Kundeneintrag an — vorhandene Kunden werden nicht doppelt angelegt.</span>
+      </div>
 
       <div id="custListArea" class="loading">Lade Kunden…</div>
     </div>
@@ -2040,6 +2044,59 @@ document.getElementById('custFormCancelBtn').addEventListener('click', cancelEdi
 document.getElementById('custSearch').addEventListener('input', (ev) => {
   custSearchTerm = ev.target.value;
   renderCustomers();
+});
+
+// Einnahmen kennen nur ein einzelnes Namensfeld. Für die Kundendatenbank wird
+// daraus das erste Wort als Vorname und der Rest als Nachname übernommen;
+// besteht der Name nur aus einem Wort, bleibt der Nachname leer.
+function splitName(fullName){
+  const parts = (fullName || "").trim().split(/\s+/).filter(Boolean);
+  if(parts.length === 0) return {vorname: "", nachname: ""};
+  if(parts.length === 1) return {vorname: parts[0], nachname: ""};
+  return {vorname: parts[0], nachname: parts.slice(1).join(' ')};
+}
+
+// Legt für alle Personen mit einer Mehrfachkarte einen Kundeneintrag an.
+// Der Abgleich läuft über den vollständigen Namen, damit weder bereits
+// vorhandene Kunden noch mehrere Karten derselben Person doppelt landen.
+document.getElementById('custFromCardsBtn').addEventListener('click', () => {
+  const cardHolders = entries.filter(e => (e.count || 0) > 0);
+  if(cardHolders.length === 0){
+    alert("Es gibt noch keine Einnahmen-Einträge mit einer Teilnehmerkarte.");
+    return;
+  }
+
+  const knownNames = new Set(
+    customers.map(c => `${c.vorname || ""} ${c.nachname || ""}`.trim().toLowerCase()).filter(Boolean)
+  );
+
+  const added = [];
+  [...cardHolders].sort((a,b) => a.date.localeCompare(b.date)).forEach(e => {
+    const {vorname, nachname} = splitName(e.name);
+    const key = `${vorname} ${nachname}`.trim().toLowerCase();
+    if(!key || knownNames.has(key)) return;
+    knownNames.add(key);
+    customers.push({
+      id: Date.now().toString(36) + Math.random().toString(36).slice(2,7),
+      vorname,
+      nachname,
+      email: "",
+      telefon: "",
+      geburtstag: "",
+      product: e.product || "",
+      remark: `Teilnehmerkarte vom ${dateFmt(e.date)}`
+    });
+    added.push(`${vorname} ${nachname}`.trim());
+  });
+
+  if(added.length === 0){
+    alert("Alle Personen mit Teilnehmerkarte sind bereits in der Kundendatenbank vorhanden.");
+    return;
+  }
+
+  saveCustomers();
+  renderCustomers();
+  alert(`${added.length} Kunden aus den Teilnehmerkarten übernommen:\n${added.join('\n')}\n\nE-Mail, Telefon und Geburtstag kannst du über "bearb." ergänzen.`);
 });
 
 // default date = today
