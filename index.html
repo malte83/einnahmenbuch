@@ -1341,11 +1341,15 @@ function setDropdownValue(prefix, value){
 // Findet eine bereits bestehende, noch nicht aufgebrauchte Mehrfachkarte
 // derselben Person (Name, Groß-/Kleinschreibung & Leerzeichen egal) für
 // dasselbe Produkt. Bei mehreren Treffern wird die zuletzt gekaufte genommen.
-function findOpenCard(name, product){
+// Mit bisDatum werden nur Karten berücksichtigt, die an diesem Tag schon
+// gekauft waren — eine Teilnahme darf nicht von einer Karte abgebucht werden,
+// die es zum Termin noch gar nicht gab.
+function findOpenCard(name, product, bisDatum){
   const normalized = name.trim().toLowerCase();
   const candidates = entries.filter(e => {
     if((e.name || "").trim().toLowerCase() !== normalized) return false;
     if(e.product !== product) return false;
+    if(bisDatum && e.date > bisDatum) return false;
     const total = e.count || 0;
     if(total <= 0) return false;
     const remaining = total - (e.attendance ? e.attendance.length : 0);
@@ -1816,7 +1820,7 @@ function deleteExpense(id){
 // Einnahmen berechnet, damit er beim Eintragen einer Teilnahme nicht
 // veraltet. Mehrere Karten derselben Person werden zusammengezählt; mit
 // product wird auf die Karten eines bestimmten Kurses eingegrenzt.
-function cardStatsByName(name, product){
+function cardStatsByName(name, product, bisDatum){
   const key = (name || "").trim().toLowerCase();
   if(!key) return null;
   let total = 0, used = 0;
@@ -1824,6 +1828,7 @@ function cardStatsByName(name, product){
     if((e.count || 0) <= 0) return;
     if((e.name || "").trim().toLowerCase() !== key) return;
     if(product && e.product !== product) return;
+    if(bisDatum && e.date > bisDatum) return;
     total += e.count;
     used += e.attendance ? e.attendance.length : 0;
   });
@@ -2076,7 +2081,7 @@ function applyDueBookings(){
     if(!t.date || t.date > heute) return;
     (t.teilnehmer || []).forEach(p => {
       if(!p || p.karteId) return;
-      const card = findOpenCard(p.name, t.product);
+      const card = findOpenCard(p.name, t.product, t.date);
       if(!card) return;
       if(!card.attendance) card.attendance = [];
       card.attendance.push(t.date);
@@ -2167,7 +2172,7 @@ function renderTermine(){
     const peopleHtml = people.length === 0
       ? `<span class="ptcard-empty-dates">Noch keine Teilnehmer eingetragen.</span>`
       : people.map((p, i) => {
-          const st = cardStatsByName(p.name, t.product);
+          const st = cardStatsByName(p.name, t.product, t.date);
           let karte;
           if(!st){
             karte = `<span class="termin-person-card none">keine Karte</span>`;
@@ -2232,7 +2237,7 @@ function addTeilnehmer(terminId){
   }
 
   const heute = new Date().toISOString().slice(0,10);
-  const card = t.date <= heute ? findOpenCard(name, t.product) : null;
+  const card = t.date <= heute ? findOpenCard(name, t.product, t.date) : null;
   if(card){
     if(!card.attendance) card.attendance = [];
     card.attendance.push(t.date);
