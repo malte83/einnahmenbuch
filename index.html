@@ -707,6 +707,35 @@ table.ledger tfoot td.amount{
   margin:22px 0 10px;
 }
 .termin-section-head:first-child{margin-top:0;}
+.termin-jahr{
+  display:flex;
+  align-items:center;
+  gap:9px;
+  width:100%;
+  text-align:left;
+  background:var(--paper-raised);
+  border:1px solid var(--line);
+  border-radius:4px;
+  padding:10px 14px;
+  margin-bottom:10px;
+  font-family:'Source Sans 3', sans-serif;
+  font-size:0.95rem;
+  font-weight:600;
+  color:var(--teal-deep);
+  cursor:pointer;
+}
+.termin-jahr:hover{border-color:var(--teal);}
+.termin-jahr-pfeil{
+  font-size:0.75rem;
+  color:var(--ink-soft);
+  width:10px;
+}
+.termin-jahr-count{
+  margin-left:auto;
+  font-weight:400;
+  font-size:0.84rem;
+  color:var(--ink-soft);
+}
 .termin-people{
   border-top:1px dashed var(--line);
   padding-top:10px;
@@ -1248,6 +1277,7 @@ let activeExpenseFilter = "Alle";
 const TERMIN_STORAGE_KEY = "termine-eintraege";
 let termine = [];
 let activeTerminFilter = "Alle";
+let offeneTerminJahre = null;   // Set der aufgeklappten Jahrgänge bei den vergangenen Terminen
 
 const CUSTOMER_STORAGE_KEY = "kunden-eintraege";
 let customers = [];
@@ -2297,9 +2327,36 @@ function renderTermine(){
       </div>`;
   };
 
+  // Vergangene Termine nach Jahrgang gruppieren, damit die Liste über die
+  // Jahre hinweg übersichtlich bleibt. Das jüngste Jahr ist offen,
+  // ältere sind eingeklappt, bis man sie anklickt.
+  const nachJahr = new Map();
+  vergangene.forEach(t => {
+    const jahr = t.date.slice(0,4);
+    if(!nachJahr.has(jahr)) nachJahr.set(jahr, []);
+    nachJahr.get(jahr).push(t);
+  });
+  const jahrgaenge = [...nachJahr.keys()].sort((a,b) => b.localeCompare(a));
+
+  if(offeneTerminJahre === null){
+    offeneTerminJahre = new Set(jahrgaenge.slice(0,1));
+  }
+
+  const vergangenHtml = jahrgaenge.map(jahr => {
+    const liste = nachJahr.get(jahr);
+    const offen = offeneTerminJahre.has(jahr);
+    const kopf = `
+      <button type="button" class="termin-jahr" data-jahr="${jahr}">
+        <span class="termin-jahr-pfeil">${offen ? '▾' : '▸'}</span>
+        <span>${jahr}</span>
+        <span class="termin-jahr-count">${liste.length === 1 ? '1 Termin' : liste.length + ' Termine'}</span>
+      </button>`;
+    return kopf + (offen ? liste.map(t => cardHtml(t, true)).join('') : '');
+  }).join('');
+
   area.innerHTML =
     (kommende.length ? `<div class="termin-section-head">Kommende Termine</div>` + kommende.map(t => cardHtml(t, false)).join('') : '') +
-    (vergangene.length ? `<div class="termin-section-head">Vergangene Termine</div>` + vergangene.map(t => cardHtml(t, true)).join('') : '');
+    (vergangene.length ? `<div class="termin-section-head">Vergangene Termine</div>` + vergangenHtml : '');
 }
 
 // ---- Auswahlfenster für Teilnehmer ----
@@ -2503,6 +2560,15 @@ function removeTeilnehmer(terminId, index){
 }
 
 document.getElementById('terminArea').addEventListener('click', (ev) => {
+  const jahrBtn = ev.target.closest ? ev.target.closest('[data-jahr]') : null;
+  if(jahrBtn){
+    const jahr = jahrBtn.dataset.jahr;
+    if(offeneTerminJahre.has(jahr)) offeneTerminJahre.delete(jahr);
+    else offeneTerminJahre.add(jahr);
+    renderTermine();
+    return;
+  }
+
   const addId = ev.target.dataset ? ev.target.dataset.addTermin : null;
   if(addId){ openTeilnehmerModal(addId); return; }
 
