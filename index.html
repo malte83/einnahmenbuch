@@ -1269,6 +1269,7 @@ const STORAGE_KEY = "einnahmen-eintraege";
 let entries = [];
 let activeFilter = "Alle";
 let activeCardFilter = "Alle";
+let zeigeAufgebrauchteKarten = false;
 
 const EXPENSE_STORAGE_KEY = "ausgaben-eintraege";
 let expenses = [];
@@ -1592,7 +1593,13 @@ function renderCards(){
     return;
   }
 
-  area.innerHTML = cards.map(e => {
+  // Aufgebrauchte Karten wandern aus der Hauptliste in einen eigenen,
+  // zugeklappten Abschnitt, damit die aktiven Karten übersichtlich bleiben.
+  const restOf = e => Math.max(0, (e.count || 0) - (e.attendance ? e.attendance.length : 0));
+  const aktive = cards.filter(e => restOf(e) > 0);
+  const aufgebraucht = cards.filter(e => restOf(e) === 0);
+
+  const cardHtml = (e, leer) => {
     const attendance = e.attendance || [];
     const total = e.count || 0;
     const remaining = Math.max(0, total - attendance.length);
@@ -1607,7 +1614,7 @@ function renderCards(){
         `).join('');
 
     return `
-      <div class="ptcard" style="border-left-color:${PRODUCT_COLORS[e.product] || '#2F5D50'}">
+      <div class="ptcard ${leer ? 'termin-past' : ''}" style="border-left-color:${PRODUCT_COLORS[e.product] || '#2F5D50'}">
         <div class="ptcard-head">
           <div>
             <span class="ptcard-name">${escapeHtml(e.name)}</span>
@@ -1625,10 +1632,31 @@ function renderCards(){
         <div class="ptcard-dates">${datesHtml}</div>
       </div>
     `;
-  }).join('');
+  };
+
+  const aktivHtml = aktive.length
+    ? aktive.map(e => cardHtml(e, false)).join('')
+    : `<div class="empty">Keine Karte mit offenen Terminen${activeCardFilter!=="Alle" ? " für „"+activeCardFilter+"“" : ""}.</div>`;
+
+  const leerHtml = aufgebraucht.length
+    ? `<button type="button" class="termin-jahr" data-toggle-leer="1">
+         <span class="termin-jahr-pfeil">${zeigeAufgebrauchteKarten ? '▾' : '▸'}</span>
+         <span>Aufgebrauchte Karten</span>
+         <span class="termin-jahr-count">${aufgebraucht.length === 1 ? '1 Karte' : aufgebraucht.length + ' Karten'}</span>
+       </button>` + (zeigeAufgebrauchteKarten ? aufgebraucht.map(e => cardHtml(e, true)).join('') : '')
+    : '';
+
+  area.innerHTML = aktivHtml + leerHtml;
 }
 
 document.getElementById('cardsArea').addEventListener('click', (ev) => {
+  const leerBtn = ev.target.closest ? ev.target.closest('[data-toggle-leer]') : null;
+  if(leerBtn){
+    zeigeAufgebrauchteKarten = !zeigeAufgebrauchteKarten;
+    renderCards();
+    return;
+  }
+
   if(ev.target.classList.contains('ptcard-add-btn')){
     const id = ev.target.dataset.id;
     const input = document.getElementById('date-input-' + id);
