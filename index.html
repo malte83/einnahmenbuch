@@ -1960,16 +1960,32 @@ function deleteExpense(id){
 function cardStatsByName(name, product, bisDatum){
   const key = (name || "").trim().toLowerCase();
   if(!key) return null;
+
+  const karten = entries.filter(e => {
+    if((e.count || 0) <= 0) return false;
+    if((e.name || "").trim().toLowerCase() !== key) return false;
+    if(product && e.product !== product) return false;
+    if(bisDatum && e.date > bisDatum) return false;
+    return true;
+  });
+  if(karten.length === 0) return null;
+
+  // Nur Karten mit noch offenen Terminen zusammenzählen: Eine längst
+  // aufgebrauchte Karte würde die Anzeige sonst aufblähen — etwa "5 / 15"
+  // statt "5 / 5", wenn zu einer leeren 10er-Karte eine neue 5er dazukommt.
+  const offene = karten.filter(e => (e.attendance ? e.attendance.length : 0) < e.count);
+
+  if(offene.length === 0){
+    // Alle Karten aufgebraucht: Stand der zuletzt gekauften zeigen.
+    const letzte = [...karten].sort((a,b) => b.date.localeCompare(a.date))[0];
+    return {total: letzte.count, remaining: 0};
+  }
+
   let total = 0, used = 0;
-  entries.forEach(e => {
-    if((e.count || 0) <= 0) return;
-    if((e.name || "").trim().toLowerCase() !== key) return;
-    if(product && e.product !== product) return;
-    if(bisDatum && e.date > bisDatum) return;
+  offene.forEach(e => {
     total += e.count;
     used += e.attendance ? e.attendance.length : 0;
   });
-  if(total === 0) return null;
   return {total, remaining: Math.max(0, total - used)};
 }
 
